@@ -1,0 +1,202 @@
+# ============================================================================
+# Wrangler Configuration for Query Worker
+# ============================================================================
+# Cloudflare Workers configuration for unified timeseries query API
+# Abstracts D1 (hot) and R2 (cold) storage tiers
+# https://developers.cloudflare.com/workers/wrangler/configuration/
+
+name = "building-vitals-query"
+main = "../src/query-worker.js"
+compatibility_date = "2024-01-01"
+compatibility_flags = ["nodejs_compat"]
+
+# ============================================================================
+# Worker Configuration
+# ============================================================================
+
+workers_dev = true
+
+# HTTP-triggered worker (no cron schedule)
+# Handles GET requests to /timeseries/query endpoint
+
+# ============================================================================
+# D1 Database Binding (Hot Storage)
+# ============================================================================
+# Connects to D1 database for recent data (<20 days)
+
+[[d1_databases]]
+binding = "DB"
+database_name = "ace-iot-db"
+database_id = "1afc0a07-85cd-4d5f-a046-b580ffffb8dc"
+
+# ============================================================================
+# R2 Bucket Binding (Cold Storage)
+# ============================================================================
+# Connects to R2 bucket for archived data (>20 days)
+# Reads daily Parquet files: /timeseries/{site}/{YYYY}/{MM}/{DD}.parquet
+
+[[r2_buckets]]
+binding = "R2"
+bucket_name = "ace-timeseries"
+
+# ============================================================================
+# KV Namespace Binding (Query Cache)
+# ============================================================================
+# Stores query result cache with TTL-based expiration
+
+[[kv_namespaces]]
+binding = "KV"
+id = "fa5e24f3f2ed4e3489a299e28f1bffaa"
+preview_id = "1468fbcbf23548f3acb88a9e574d3485"
+
+# ============================================================================
+# Environment Variables
+# ============================================================================
+
+[vars]
+ENVIRONMENT = "production"
+HOT_STORAGE_DAYS = "20"
+MAX_QUERY_RANGE_DAYS = "365"
+ENABLE_QUERY_CACHE = "true"
+ALLOWED_ORIGINS = "https://building-vitals.web.app,https://building-vitals.firebaseapp.com,http://localhost:3001,http://localhost:3000"
+
+# ============================================================================
+# Routes
+# ============================================================================
+# Map worker to custom domain (configure in Cloudflare dashboard)
+
+# Example production route:
+# route = "api.building-vitals.com/timeseries/*"
+
+# Example staging route:
+# route = "api-staging.building-vitals.com/timeseries/*"
+
+# ============================================================================
+# Resource Limits
+# ============================================================================
+# Use Unbound worker for longer execution time (R2 queries can be slow)
+
+[limits]
+cpu_ms = 30000  # 30 seconds (required for R2 Parquet reading)
+
+# ============================================================================
+# CORS Configuration
+# ============================================================================
+# Allow frontend to query from any origin
+# For production, restrict to specific domains
+
+# Set via Response headers in worker code:
+# 'Access-Control-Allow-Origin': '*' (or specific domain)
+# 'Access-Control-Allow-Methods': 'GET, OPTIONS'
+# 'Access-Control-Allow-Headers': 'Content-Type'
+
+# ============================================================================
+# Development Environment
+# ============================================================================
+
+[env.development]
+name = "building-vitals-query-dev"
+workers_dev = true
+
+[env.development.vars]
+ENVIRONMENT = "development"
+HOT_STORAGE_DAYS = "20"
+
+[[env.development.d1_databases]]
+binding = "DB"
+database_name = "ace-iot-db-dev"
+database_id = "your-dev-database-id"
+
+[[env.development.r2_buckets]]
+binding = "R2"
+bucket_name = "ace-timeseries-dev"
+
+[[env.development.kv_namespaces]]
+binding = "KV"
+id = "your-dev-kv-id"
+
+# ============================================================================
+# Staging Environment
+# ============================================================================
+
+[env.staging]
+name = "building-vitals-query-staging"
+
+[env.staging.vars]
+ENVIRONMENT = "staging"
+HOT_STORAGE_DAYS = "20"
+
+[[env.staging.d1_databases]]
+binding = "DB"
+database_name = "ace-iot-db-staging"
+database_id = "your-staging-database-id"
+
+[[env.staging.r2_buckets]]
+binding = "R2"
+bucket_name = "ace-timeseries-staging"
+
+[[env.staging.kv_namespaces]]
+binding = "KV"
+id = "your-staging-kv-id"
+
+# ============================================================================
+# Production Environment
+# ============================================================================
+
+[env.production]
+name = "building-vitals-query"
+
+[env.production.vars]
+ENVIRONMENT = "production"
+HOT_STORAGE_DAYS = "20"
+MAX_QUERY_RANGE_DAYS = "365"
+ENABLE_QUERY_CACHE = "true"
+ALLOWED_ORIGINS = "https://building-vitals.web.app,https://building-vitals.firebaseapp.com,http://localhost:3001,http://localhost:3000"
+
+[env.production.observability]
+enabled = true
+head_sampling_rate = 0.1
+
+[[env.production.d1_databases]]
+binding = "DB"
+database_name = "ace-iot-db"
+database_id = "1afc0a07-85cd-4d5f-a046-b580ffffb8dc"
+
+[[env.production.r2_buckets]]
+binding = "R2"
+bucket_name = "ace-timeseries"
+
+[[env.production.kv_namespaces]]
+binding = "KV"
+id = "fa5e24f3f2ed4e3489a299e28f1bffaa"
+
+# ============================================================================
+# Observability
+# ============================================================================
+
+[observability]
+enabled = true
+head_sampling_rate = 1.0
+
+# ============================================================================
+# Deployment Commands
+# ============================================================================
+# Development:
+#   wrangler dev -c workers/wrangler-query.toml
+#
+# Deploy to staging:
+#   wrangler deploy -c workers/wrangler-query.toml --env staging
+#
+# Deploy to production:
+#   wrangler deploy -c workers/wrangler-query.toml --env production
+#
+# Tail logs:
+#   wrangler tail -c workers/wrangler-query.toml --env production
+#
+# Example query:
+#   curl "https://building-vitals-query.workers.dev/timeseries/query?site_name=ses_falls_city&point_names=Building1.HVAC.AHU-1.SupplyTemp,Building1.HVAC.AHU-1.ReturnTemp&start_time=1704067200000&end_time=1705363199999&interval=5min"
+#
+# Health check:
+#   curl https://building-vitals-query.workers.dev/health
+#
+# ============================================================================

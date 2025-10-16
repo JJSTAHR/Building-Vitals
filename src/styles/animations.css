@@ -1,0 +1,460 @@
+/**
+ * Token Management Animations
+ *
+ * Centralized CSS animations for smooth, consistent UI transitions
+ * across all token management components.
+ */
+
+/* ============================================
+   KEYFRAME ANIMATIONS
+   ============================================ */
+
+/**
+ * Pulse Animation
+ * Used for critical token warnings and important alerts
+ */
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.85;
+    transform: scale(1.02);
+  }
+}
+
+/**
+ * Subtle Pulse
+ * Gentler version for less critical warnings
+ */
+@keyframes subtlePulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.7;
+  }
+}
+
+/**
+ * Icon Pulse
+ * For pulsing icons in alerts and badges
+ */
+@keyframes iconPulse {
+  0%, 100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.2);
+  }
+}
+
+/**
+ * Slide In from Top
+ * Used for banner notifications
+ */
+@keyframes slideInFromTop {
+  from {
+    transform: translateY(-100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+/**
+ * Slide In from Bottom
+ * Used for snackbars and bottom notifications
+ */
+@keyframes slideInFromBottom {
+  from {
+    transform: translateY(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+/**
+ * Fade In
+ * Smooth fade-in for content
+ */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/**
+ * Fade Out
+ * Smooth fade-out for content removal
+ */
+@keyframes fadeOut {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+/**
+ * Scale In
+ * Growing effect for dialogs and modals
+ */
+@keyframes scaleIn {
+  from {
+    transform: scale(0.9);
+    opacity: 0;
+  }
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+/**
+ * Shake
+ * Error indication animation
+ */
+@keyframes shake {
+  0%, 100% {
+    transform: translateX(0);
+  }
+  10%, 30%, 50%, 70%, 90% {
+    transform: translateX(-5px);
+  }
+  20%, 40%, 60%, 80% {
+    transform: translateX(5px);
+  }
+}
+
+/**
+ * Rotate In
+ * For refresh icons and loading indicators
+ */
+@keyframes rotateIn {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/**
+ * Bounce
+ * Success indication animation
+ */
+@keyframes bounce {
+  0%, 20%, 50%, 80%, 100% {
+    transform: translateY(0);
+  }
+  40% {
+    transform: translateY(-10px);
+  }
+  60% {
+    transform: translateY(-5px);
+  }
+}
+
+/**
+ * Glow
+ * Highlight effect for important elements
+ */
+@keyframes glow {
+  0%, 100% {
+    box-shadow: 0 0 5px rgba(33, 150, 243, 0.3);
+  }
+  50% {
+    box-shadow: 0 0 20px rgba(33, 150, 243, 0.6);
+  }
+}
+
+/**
+ * Shimmer
+ * Loading skeleton effect
+ */
+@keyframes shimmer {
+  0% {
+    background-position: -1000px 0;
+  }
+  100% {
+    background-position: 1000px 0;
+  }
+}
+
+/* ============================================
+   UTILITY CLASSES
+   ============================================ */
+
+/**
+ * Smooth Transition Base
+ * Apply to elements that need transitions
+ */
+.token-transition {
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.token-transition-fast {
+  transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.token-transition-slow {
+  transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/**
+ * Animation Classes
+ * Ready-to-use animation utilities
+ */
+.token-pulse {
+  animation: pulse 2s ease-in-out infinite;
+}
+
+.token-subtle-pulse {
+  animation: subtlePulse 2s ease-in-out infinite;
+}
+
+.token-icon-pulse {
+  animation: iconPulse 0.5s ease-in-out;
+}
+
+.token-fade-in {
+  animation: fadeIn 0.25s ease-in-out;
+}
+
+.token-slide-in-top {
+  animation: slideInFromTop 0.4s ease-out;
+}
+
+.token-slide-in-bottom {
+  animation: slideInFromBottom 0.4s ease-out;
+}
+
+.token-scale-in {
+  animation: scaleIn 0.3s ease-out;
+}
+
+.token-shake {
+  animation: shake 0.5s ease-in-out;
+}
+
+.token-rotate {
+  animation: rotateIn 0.3s ease-in-out;
+}
+
+.token-bounce {
+  animation: bounce 0.6s ease-in-out;
+}
+
+.token-glow {
+  animation: glow 2s ease-in-out infinite;
+}
+
+.token-shimmer {
+  background: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0) 0%,
+    rgba(255, 255, 255, 0.3) 50%,
+    rgba(255, 255, 255, 0) 100%
+  );
+  background-size: 1000px 100%;
+  animation: shimmer 2s infinite;
+}
+
+/* ============================================
+   HOVER EFFECTS
+   ============================================ */
+
+/**
+ * Card Hover Effects
+ */
+.token-card-hover {
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.token-card-hover:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 16px rgba(0, 0, 0, 0.15);
+}
+
+/**
+ * Button Hover Effects
+ */
+.token-button-hover {
+  transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.token-button-hover:hover {
+  transform: scale(1.05);
+}
+
+/**
+ * Icon Hover Effects
+ */
+.token-icon-hover {
+  transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.token-icon-hover:hover {
+  transform: scale(1.1);
+}
+
+.token-icon-rotate-hover {
+  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.token-icon-rotate-hover:hover {
+  transform: rotate(180deg);
+}
+
+/* ============================================
+   LOADING STATES
+   ============================================ */
+
+/**
+ * Spinner
+ */
+.token-spinner {
+  animation: rotateIn 1s linear infinite;
+}
+
+/**
+ * Skeleton Loading
+ */
+.token-skeleton {
+  background: linear-gradient(
+    90deg,
+    #f0f0f0 25%,
+    #e0e0e0 50%,
+    #f0f0f0 75%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+  border-radius: 4px;
+}
+
+/* ============================================
+   FOCUS STATES (Accessibility)
+   ============================================ */
+
+/**
+ * Focus Visible Outline
+ * Enhanced focus for keyboard navigation
+ */
+.token-focus-visible:focus-visible {
+  outline: 2px solid #2196f3;
+  outline-offset: 2px;
+}
+
+/* ============================================
+   RESPONSIVE ANIMATIONS
+   ============================================ */
+
+/**
+ * Reduce motion for users who prefer it
+ */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+
+  .token-pulse,
+  .token-subtle-pulse,
+  .token-glow,
+  .token-shimmer {
+    animation: none !important;
+  }
+}
+
+/* ============================================
+   STATUS-SPECIFIC ANIMATIONS
+   ============================================ */
+
+/**
+ * Success Animation
+ */
+.token-success-enter {
+  animation: scaleIn 0.3s ease-out, fadeIn 0.3s ease-out;
+}
+
+.token-success-icon {
+  animation: iconPulse 0.5s ease-in-out, bounce 0.6s ease-in-out 0.3s;
+}
+
+/**
+ * Error Animation
+ */
+.token-error-enter {
+  animation: shake 0.5s ease-in-out, fadeIn 0.3s ease-out;
+}
+
+.token-error-icon {
+  animation: iconPulse 0.5s ease-in-out;
+}
+
+/**
+ * Warning Animation
+ */
+.token-warning-enter {
+  animation: slideInFromTop 0.4s ease-out;
+}
+
+.token-warning-icon {
+  animation: subtlePulse 2s ease-in-out infinite;
+}
+
+/**
+ * Critical Animation
+ */
+.token-critical-enter {
+  animation: slideInFromTop 0.4s ease-out, shake 0.5s ease-in-out 0.4s;
+}
+
+.token-critical-icon {
+  animation: pulse 2s ease-in-out infinite;
+}
+
+/* ============================================
+   STAGGER ANIMATIONS (for lists)
+   ============================================ */
+
+/**
+ * Staggered Fade In
+ * Use with nth-child to create cascading effect
+ */
+.token-stagger-item {
+  animation: fadeIn 0.3s ease-out backwards;
+}
+
+.token-stagger-item:nth-child(1) { animation-delay: 0.05s; }
+.token-stagger-item:nth-child(2) { animation-delay: 0.1s; }
+.token-stagger-item:nth-child(3) { animation-delay: 0.15s; }
+.token-stagger-item:nth-child(4) { animation-delay: 0.2s; }
+.token-stagger-item:nth-child(5) { animation-delay: 0.25s; }
+.token-stagger-item:nth-child(n+6) { animation-delay: 0.3s; }
+
+/* ============================================
+   EXPORT NOTE
+   ============================================ */
+
+/**
+ * These animations are designed to work seamlessly with Material-UI
+ * components and the tokenTheme configuration.
+ *
+ * Import this file in your main App.tsx or index.tsx:
+ * import './styles/animations.css';
+ */

@@ -1,0 +1,56 @@
+================================================================================
+BACKFILL WORKER - QUICK FIX GUIDE
+================================================================================
+
+PROBLEM: Backfill worker not accessing ACE API correctly
+
+ROOT CAUSE: ACE_API_KEY secret not deployed to backfill worker
+
+CODE STATUS: ✅ CORRECT (identical to working ETL worker)
+
+================================================================================
+EXACT FIX (3 steps, 2 minutes)
+================================================================================
+
+1. Deploy Secret:
+   wrangler secret put ACE_API_KEY --config workers/wrangler-backfill.toml --env production
+
+2. Redeploy Worker:
+   wrangler deploy --config workers/wrangler-backfill.toml --env production
+
+3. Test:
+   curl -X POST https://building-vitals-backfill.jstahr.workers.dev/trigger
+
+================================================================================
+VERIFICATION
+================================================================================
+
+Check health:
+  curl https://building-vitals-backfill.jstahr.workers.dev/health
+
+Monitor logs:
+  wrangler tail --config workers/wrangler-backfill.toml --env production
+
+Check R2 data:
+  wrangler r2 object list ace-timeseries --prefix="timeseries/ses_falls_city/"
+
+================================================================================
+TOKEN FORMAT (Already Correct in Code)
+================================================================================
+
+Both ETL and Backfill workers use:
+  headers: {
+    'authorization': `Bearer ${env.ACE_API_KEY}`
+  }
+
+✅ Format is correct - just needs secret deployed
+
+================================================================================
+DOCUMENTATION
+================================================================================
+
+Full guide: docs/BACKFILL_TOKEN_FIX.md
+Summary: BACKFILL_FIX_SUMMARY.md
+Test scripts: scripts/test-ace-token.sh, scripts/verify-backfill-config.sh
+
+================================================================================

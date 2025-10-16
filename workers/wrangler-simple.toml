@@ -1,0 +1,7 @@
+# Simple Worker Configuration - No bindings
+name = "ace-iot-ai-proxy"
+main = "point-filter-worker.js"
+compatibility_date = "2024-10-01"
+
+[vars]
+ACE_API_URL = "https://flightdeck.aceiot.cloud"

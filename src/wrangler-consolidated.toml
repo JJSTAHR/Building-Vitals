@@ -1,0 +1,134 @@
+# Cloudflare Workers Configuration for Consolidated ACE Proxy
+# Worker Name: ace-iot-consolidated-proxy
+# Purpose: Unified proxy for all ACE IoT API requests with caching and enhancement
+
+name = "ace-iot-consolidated-proxy"
+main = "consolidated-ace-proxy-worker.js"
+compatibility_date = "2024-10-01"
+account_id = "7dcac9cefd9619a741980cd17367ab6f"
+
+# ============================================================================
+# KV NAMESPACE BINDINGS
+# ============================================================================
+# CORRECTED: Use same KV namespace as all other workers
+# See config/cloudflare-unified-config.toml for details
+
+# KV namespace for caching points and timeseries data
+# This namespace stores:
+# - Configured points: site:{siteName}:configured_points
+# - Timeseries data: timeseries:{siteName}:{start}:{end}:{points}:{cursor}:{raw}:{size}
+[[kv_namespaces]]
+binding = "POINTS_KV"
+id = "fa5e24f3f2ed4e3489a299e28f1bffaa"  # ✅ CORRECTED: Same as all workers
+preview_id = "1468fbcbf23548f3acb88a9e574d3485"  # ✅ CORRECTED: Same as all workers
+
+# ============================================================================
+# ENVIRONMENT VARIABLES
+# ============================================================================
+
+[vars]
+# ACE IoT API base URL (should not include trailing slash or '/api')
+ACE_API_BASE_URL = "https://flightdeck.aceiot.cloud/api"
+ENVIRONMENT = "production"
+WORKER_VERSION = "1.0.0"
+
+# ============================================================================
+# ROUTES (Optional - if you want custom domain routing)
+# ============================================================================
+
+# Uncomment and configure if using custom domain
+# routes = [
+#   { pattern = "api.yourdomain.com/*", zone_name = "yourdomain.com" }
+# ]
+
+# ============================================================================
+# LIMITS
+# ============================================================================
+
+[limits]
+# Increase CPU time for large data processing (sites with 10K+ points)
+cpu_ms = 30000  # 30 seconds max CPU time
+
+# ============================================================================
+# DEVELOPMENT ENVIRONMENT
+# ============================================================================
+
+[env.development]
+name = "ace-iot-consolidated-proxy-dev"
+
+[env.development.vars]
+ACE_API_BASE_URL = "https://flightdeck.aceiot.cloud/api"
+ENVIRONMENT = "development"
+
+# Development KV namespace (separate from production)
+[[env.development.kv_namespaces]]
+binding = "POINTS_KV"
+id = "YOUR_DEV_KV_NAMESPACE_ID_HERE"
+preview_id = "YOUR_DEV_PREVIEW_KV_NAMESPACE_ID_HERE"
+
+# ============================================================================
+# STAGING ENVIRONMENT
+# ============================================================================
+
+[env.staging]
+name = "ace-iot-consolidated-proxy-staging"
+
+[env.staging.vars]
+ACE_API_BASE_URL = "https://flightdeck.aceiot.cloud/api"
+ENVIRONMENT = "staging"
+
+# Staging KV namespace
+[[env.staging.kv_namespaces]]
+binding = "POINTS_KV"
+id = "YOUR_STAGING_KV_NAMESPACE_ID_HERE"
+preview_id = "YOUR_STAGING_PREVIEW_KV_NAMESPACE_ID_HERE"
+
+# ============================================================================
+# BUILD CONFIGURATION
+# ============================================================================
+
+[build]
+command = ""  # No build step required for vanilla JS
+watch_dirs = []
+
+# ============================================================================
+# OBSERVABILITY
+# ============================================================================
+
+# Enable logging (already configured in code with console.log)
+# Logs are available via:
+# - Cloudflare Dashboard: Workers & Pages > your-worker > Logs
+# - CLI: wrangler tail ace-iot-consolidated-proxy
+
+# ============================================================================
+# NOTES
+# ============================================================================
+
+# BEFORE DEPLOYING:
+# 1. Replace YOUR_ACCOUNT_ID_HERE with your Cloudflare account ID
+# 2. Create KV namespaces (see KV_SETUP_COMMANDS.md)
+# 3. Replace YOUR_KV_NAMESPACE_ID_HERE with actual namespace IDs
+# 4. Deploy with: wrangler deploy --env production
+#
+# KV NAMESPACE STRUCTURE:
+# - Production: ace-iot-points-prod
+# - Staging: ace-iot-points-staging
+# - Development: ace-iot-points-dev
+#
+# AUTHENTICATION:
+# - Worker accepts X-ACE-Token header from frontend
+# - Transforms to lowercase 'authorization: Bearer {token}' for ACE API
+# - ACE API is case-sensitive and REQUIRES lowercase
+#
+# CACHING STRATEGY:
+# - Configured points: 1 hour TTL
+# - Recent timeseries (< 24h): 2 minutes TTL
+# - Complete historical timeseries: 24 hours TTL
+# - Partial historical timeseries: 1 hour TTL
+#
+# ENDPOINTS:
+# - /api/sites - List all sites (no cache)
+# - /api/sites/{siteName}/configured_points - Points with KV cache
+# - /api/sites/{siteName}/timeseries/paginated - Timeseries with intelligent cache
+# - /api/health - Health check endpoint
+# - /* - Generic passthrough for other ACE API endpoints

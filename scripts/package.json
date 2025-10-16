@@ -1,0 +1,18 @@
+{
+  "name": "building-vitals-scripts",
+  "version": "1.0.0",
+  "description": "Utility scripts for Building Vitals data backfill and infrastructure",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "backfill": "node backfill-historical.js",
+    "backfill:production": "node backfill-historical.js --env production",
+    "setup": "bash setup-infrastructure.sh"
+  },
+  "dependencies": {
+    "parquetjs": "^0.11.2"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

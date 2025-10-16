@@ -1,0 +1,703 @@
+{
+  "test_suite": "BACnet Point Classification Test Cases",
+  "source": "Real data from SES Falls City site",
+  "total_cases": 20,
+  "test_cases": [
+    {
+      "id": "TC001",
+      "description": "VAV box with room humidity - high confidence",
+      "input": {
+        "Name": "ses/ses_falls_city/8000:33-8033/analogValue/102",
+        "device_name": "VAV_811",
+        "object_units": "percentRelativeHumidity",
+        "object_type": "analogValue",
+        "object_index": "102",
+        "marker_tags": "QI Risk Manager C119, RoomRH",
+        "present_value": "49.0"
+      },
+      "expected": {
+        "equipment": {
+          "type": "VAV",
+          "id": "811",
+          "confidence": "high"
+        },
+        "point_type": {
+          "category": "Humidity",
+          "subcategory": "RoomRH",
+          "confidence": "high"
+        },
+        "location": {
+          "buildingWing": "C",
+          "roomNumber": "119",
+          "functionalArea": null
+        }
+      }
+    },
+    {
+      "id": "TC002",
+      "description": "RTU with fan status - binary point",
+      "input": {
+        "Name": "ses/ses_falls_city/2000:43-2043/binaryValue/10",
+        "device_name": "Rtu2",
+        "object_units": "",
+        "object_type": "binaryValue",
+        "object_index": "10",
+        "marker_tags": "RTU2N",
+        "present_value": "active"
+      },
+      "expected": {
+        "equipment": {
+          "type": "RTU",
+          "id": "2",
+          "confidence": "high"
+        },
+        "point_type": {
+          "category": "Status",
+          "subcategory": "FanStatus",
+          "confidence": "medium"
+        },
+        "location": {
+          "buildingWing": null,
+          "roomNumber": null,
+          "functionalArea": null
+        }
+      }
+    },
+    {
+      "id": "TC003",
+      "description": "Empty device name - low confidence",
+      "input": {
+        "Name": "ses/ses_falls_city/12000:18-12018/analogInput/0",
+        "device_name": "",
+        "object_units": "noUnits",
+        "object_type": "analogInput",
+        "object_index": "0",
+        "marker_tags": "VAVR 725 (WHAT ROOM?), RoomTemp",
+        "present_value": "4080.0"
+      },
+      "expected": {
+        "equipment": {
+          "type": "UNKNOWN",
+          "id": null,
+          "confidence": "low"
+        },
+        "point_type": {
+          "category": "Temperature",
+          "subcategory": "RoomTemp",
+          "confidence": "high"
+        },
+        "location": {
+          "buildingWing": null,
+          "roomNumber": null,
+          "functionalArea": null
+        },
+        "notes": "Device name empty - should be flagged for review"
+      }
+    },
+    {
+      "id": "TC004",
+      "description": "VAV with damper position",
+      "input": {
+        "Name": "ses/ses_falls_city/12000:23-12023/analogValue/8",
+        "device_name": "",
+        "object_units": "noUnits",
+        "object_type": "analogValue",
+        "object_index": "8",
+        "marker_tags": "VAVR 730 (WHAT ROOM?), Damper",
+        "present_value": "9.908332824707031"
+      },
+      "expected": {
+        "equipment": {
+          "type": "UNKNOWN",
+          "id": null,
+          "confidence": "low"
+        },
+        "point_type": {
+          "category": "Control Signal",
+          "subcategory": "Damper",
+          "confidence": "high"
+        },
+        "location": {
+          "buildingWing": null,
+          "roomNumber": null,
+          "functionalArea": null
+        }
+      }
+    },
+    {
+      "id": "TC005",
+      "description": "VAV with heat signal",
+      "input": {
+        "Name": "ses/ses_falls_city/6000:48-6048/analogValue/0",
+        "device_name": "VAV_401",
+        "object_units": "percent",
+        "object_type": "analogValue",
+        "object_index": "0",
+        "marker_tags": "Male Lockers B1416, HeatSignal",
+        "present_value": "24.110671997070312"
+      },
+      "expected": {
+        "equipment": {
+          "type": "VAV",
+          "id": "401",
+          "confidence": "high"
+        },
+        "point_type": {
+          "category": "Control Signal",
+          "subcategory": "HeatSignal",
+          "confidence": "high"
+        },
+        "location": {
+          "buildingWing": "B",
+          "roomNumber": "1416",
+          "functionalArea": "Male Lockers"
+        }
+      }
+    },
+    {
+      "id": "TC006",
+      "description": "VAV with discharge air temperature",
+      "input": {
+        "Name": "ses/ses_falls_city/2000:17-2017/analogInput/2",
+        "device_name": "Vav17",
+        "object_units": "degreesFahrenheit",
+        "object_type": "analogInput",
+        "object_index": "2",
+        "marker_tags": "Office 1222, DaTemp",
+        "present_value": "63.79999923706055"
+      },
+      "expected": {
+        "equipment": {
+          "type": "VAV",
+          "id": "17",
+          "confidence": "high"
+        },
+        "point_type": {
+          "category": "Temperature",
+          "subcategory": "DaTemp",
+          "confidence": "high"
+        },
+        "location": {
+          "buildingWing": null,
+          "roomNumber": "1222",
+          "functionalArea": "Office"
+        }
+      }
+    },
+    {
+      "id": "TC007",
+      "description": "RTU with return air pressure",
+      "input": {
+        "Name": "ses/ses_falls_city/1000:6-1006/analogInput/9",
+        "device_name": "Ahu7_1",
+        "object_units": "inchesOfWater",
+        "object_type": "analogInput",
+        "object_index": "9",
+        "marker_tags": "RTU7 RaPress, RTU7",
+        "present_value": "0.1312236785888672"
+      },
+      "expected": {
+        "equipment": {
+          "type": "RTU",
+          "id": "7",
+          "confidence": "high"
+        },
+        "point_type": {
+          "category": "Pressure",
+          "subcategory": "RaPress",
+          "confidence": "high"
+        },
+        "location": {
+          "buildingWing": null,
+          "roomNumber": null,
+          "functionalArea": null
+        }
+      }
+    },
+    {
+      "id": "TC008",
+      "description": "Chilled water system - central plant",
+      "input": {
+        "Name": "ses/ses_falls_city/1000:61-1061/binaryValue/55",
+        "device_name": "CHWS",
+        "object_units": "",
+        "object_type": "binaryValue",
+        "object_index": "55",
+        "marker_tags": "Chilled Water System",
+        "present_value": "inactive"
+      },
+      "expected": {
+        "equipment": {
+          "type": "CHWS",
+          "id": null,
+          "confidence": "high"
+        },
+        "point_type": {
+          "category": "Binary Status",
+          "subcategory": null,
+          "confidence": "low"
+        },
+        "location": {
+          "buildingWing": null,
+          "roomNumber": null,
+          "functionalArea": "Chilled Water System"
+        }
+      }
+    },
+    {
+      "id": "TC009",
+      "description": "RTU with return air humidity",
+      "input": {
+        "Name": "ses/ses_falls_city/4000:4-4004/analogInput/3",
+        "device_name": "",
+        "object_units": "percentRelativeHumidity",
+        "object_type": "analogInput",
+        "object_index": "3",
+        "marker_tags": "RTU5",
+        "present_value": "55.2353630065918"
+      },
+      "expected": {
+        "equipment": {
+          "type": "UNKNOWN",
+          "id": null,
+          "confidence": "low"
+        },
+        "point_type": {
+          "category": "Humidity",
+          "subcategory": null,
+          "confidence": "medium"
+        },
+        "location": {
+          "buildingWing": null,
+          "roomNumber": null,
+          "functionalArea": null
+        },
+        "notes": "Device name empty, but marker tag says RTU5"
+      }
+    },
+    {
+      "id": "TC010",
+      "description": "VAV with airflow setpoint",
+      "input": {
+        "Name": "ses/ses_falls_city/6000:12-6012/analogValue/47",
+        "device_name": "VAV_312",
+        "object_units": "noUnits",
+        "object_type": "analogValue",
+        "object_index": "47",
+        "marker_tags": "VAV, VavAirFlSpt, Chapel B102",
+        "present_value": "25.0"
+      },
+      "expected": {
+        "equipment": {
+          "type": "VAV",
+          "id": "312",
+          "confidence": "high"
+        },
+        "point_type": {
+          "category": "Setpoint",
+          "subcategory": null,
+          "confidence": "medium"
+        },
+        "location": {
+          "buildingWing": "B",
+          "roomNumber": "102",
+          "functionalArea": "Chapel"
+        },
+        "notes": "Marker tags format is different - 3 tags instead of 2"
+      }
+    },
+    {
+      "id": "TC011",
+      "description": "RTU with binary fan status",
+      "input": {
+        "Name": "ses/ses_falls_city/1000:6-1006/binaryInput/6",
+        "device_name": "Ahu7_1",
+        "object_units": "",
+        "object_type": "binaryInput",
+        "object_index": "6",
+        "marker_tags": "RTU7 SaFanStatus, RTU7",
+        "present_value": "active"
+      },
+      "expected": {
+        "equipment": {
+          "type": "RTU",
+          "id": "7",
+          "confidence": "high"
+        },
+        "point_type": {
+          "category": "Status",
+          "subcategory": "FanStatus",
+          "confidence": "high"
+        },
+        "location": {
+          "buildingWing": null,
+          "roomNumber": null,
+          "functionalArea": null
+        }
+      }
+    },
+    {
+      "id": "TC012",
+      "description": "VAV with airflow measurement",
+      "input": {
+        "Name": "ses/ses_falls_city/2000:19-2019/analogInput/10",
+        "device_name": "Vav19",
+        "object_units": "cubicFeetPerMinute",
+        "object_type": "analogInput",
+        "object_index": "10",
+        "marker_tags": "MD Office 1224, Airflow",
+        "present_value": "129.0"
+      },
+      "expected": {
+        "equipment": {
+          "type": "VAV",
+          "id": "19",
+          "confidence": "high"
+        },
+        "point_type": {
+          "category": "Airflow",
+          "subcategory": null,
+          "confidence": "high"
+        },
+        "location": {
+          "buildingWing": null,
+          "roomNumber": "1224",
+          "functionalArea": "MD Office"
+        }
+      }
+    },
+    {
+      "id": "TC013",
+      "description": "RVB with damper - ambiguous equipment",
+      "input": {
+        "Name": "ses/ses_falls_city/3100:47-3047/analogValue/9",
+        "device_name": "Rvb02",
+        "object_units": "percent",
+        "object_type": "analogValue",
+        "object_index": "9",
+        "marker_tags": "RVB02 - WHAT IS THIS?, Damper",
+        "present_value": "22.66666603088379"
+      },
+      "expected": {
+        "equipment": {
+          "type": "RVB",
+          "id": "02",
+          "confidence": "medium"
+        },
+        "point_type": {
+          "category": "Control Signal",
+          "subcategory": "Damper",
+          "confidence": "high"
+        },
+        "location": {
+          "buildingWing": null,
+          "roomNumber": null,
+          "functionalArea": null
+        },
+        "notes": "Marker indicates unknown equipment type"
+      }
+    },
+    {
+      "id": "TC014",
+      "description": "RTU setpoint value",
+      "input": {
+        "Name": "ses/ses_falls_city/4000:1-4001/analogValue/58",
+        "device_name": "Ahu4_1",
+        "object_units": "noUnits",
+        "object_type": "analogValue",
+        "object_index": "58",
+        "marker_tags": "RTU4",
+        "present_value": "70.0"
+      },
+      "expected": {
+        "equipment": {
+          "type": "RTU",
+          "id": "4",
+          "confidence": "high"
+        },
+        "point_type": {
+          "category": "Setpoint",
+          "subcategory": null,
+          "confidence": "low"
+        },
+        "location": {
+          "buildingWing": null,
+          "roomNumber": null,
+          "functionalArea": null
+        },
+        "notes": "No point type in marker tags, only equipment"
+      }
+    },
+    {
+      "id": "TC015",
+      "description": "Chilled water system alarm",
+      "input": {
+        "Name": "ses/ses_falls_city/1000:61-1061/binaryInput/11",
+        "device_name": "CHWS",
+        "object_units": "",
+        "object_type": "binaryInput",
+        "object_index": "11",
+        "marker_tags": "Chilled Water System",
+        "present_value": "inactive"
+      },
+      "expected": {
+        "equipment": {
+          "type": "CHWS",
+          "id": null,
+          "confidence": "high"
+        },
+        "point_type": {
+          "category": "Binary Status",
+          "subcategory": null,
+          "confidence": "low"
+        },
+        "location": {
+          "buildingWing": null,
+          "roomNumber": null,
+          "functionalArea": "Chilled Water System"
+        }
+      }
+    },
+    {
+      "id": "TC016",
+      "description": "VAV with space humidity using object name",
+      "input": {
+        "Name": "ses/ses_falls_city/3100:3-3003/analogValue/102",
+        "device_name": "Vav03",
+        "object_name": "Space Humidity",
+        "object_units": "percentRelativeHumidity",
+        "object_type": "analogValue",
+        "object_index": "102",
+        "marker_tags": "Decontamination 1413, Humidity",
+        "present_value": "42.5"
+      },
+      "expected": {
+        "equipment": {
+          "type": "VAV",
+          "id": "03",
+          "confidence": "high"
+        },
+        "point_type": {
+          "category": "Humidity",
+          "subcategory": null,
+          "confidence": "high"
+        },
+        "location": {
+          "buildingWing": null,
+          "roomNumber": "1413",
+          "functionalArea": "Decontamination"
+        }
+      }
+    },
+    {
+      "id": "TC017",
+      "description": "Generic device - DEV prefix",
+      "input": {
+        "Name": "ses/ses_falls_city/1000:1-1001/analogValue/9",
+        "device_name": "DEV1001",
+        "object_units": "percent",
+        "object_type": "analogValue",
+        "object_index": "9",
+        "marker_tags": "Mixing Room, Damper",
+        "present_value": "44.44444274902344"
+      },
+      "expected": {
+        "equipment": {
+          "type": "OTHER",
+          "id": "1001",
+          "confidence": "low"
+        },
+        "point_type": {
+          "category": "Control Signal",
+          "subcategory": "Damper",
+          "confidence": "high"
+        },
+        "location": {
+          "buildingWing": null,
+          "roomNumber": null,
+          "functionalArea": "Mixing Room"
+        }
+      }
+    },
+    {
+      "id": "TC018",
+      "description": "RTU with supply air velocity",
+      "input": {
+        "Name": "ses/ses_falls_city/4000:5-4005/analogInput/6",
+        "device_name": "",
+        "object_units": "feetPerMinute",
+        "object_type": "analogInput",
+        "object_index": "6",
+        "marker_tags": "RTU5",
+        "present_value": "1107.53173828125"
+      },
+      "expected": {
+        "equipment": {
+          "type": "UNKNOWN",
+          "id": null,
+          "confidence": "low"
+        },
+        "point_type": {
+          "category": "Airflow",
+          "subcategory": null,
+          "confidence": "medium"
+        },
+        "location": {
+          "buildingWing": null,
+          "roomNumber": null,
+          "functionalArea": null
+        }
+      }
+    },
+    {
+      "id": "TC019",
+      "description": "VAV with complex location",
+      "input": {
+        "Name": "ses/ses_falls_city/8000:17-8017/analogValue/8",
+        "device_name": "VAV_803",
+        "object_units": "percent",
+        "object_type": "analogValue",
+        "object_index": "8",
+        "marker_tags": "Business Office Supervisor C132, Damper",
+        "present_value": "39.234413146972656"
+      },
+      "expected": {
+        "equipment": {
+          "type": "VAV",
+          "id": "803",
+          "confidence": "high"
+        },
+        "point_type": {
+          "category": "Control Signal",
+          "subcategory": "Damper",
+          "confidence": "high"
+        },
+        "location": {
+          "buildingWing": "C",
+          "roomNumber": "132",
+          "functionalArea": "Business Office"
+        }
+      }
+    },
+    {
+      "id": "TC020",
+      "description": "RTU with setpoint limit",
+      "input": {
+        "Name": "ses/ses_falls_city/1000:6-1006/analogValue/60",
+        "device_name": "Ahu7_1",
+        "object_units": "noUnits",
+        "object_type": "analogValue",
+        "object_index": "60",
+        "marker_tags": "RTU7 SaLowLimit, RTU7",
+        "present_value": "50.0"
+      },
+      "expected": {
+        "equipment": {
+          "type": "RTU",
+          "id": "7",
+          "confidence": "high"
+        },
+        "point_type": {
+          "category": "Setpoint",
+          "subcategory": null,
+          "confidence": "high"
+        },
+        "location": {
+          "buildingWing": null,
+          "roomNumber": null,
+          "functionalArea": null
+        }
+      }
+    }
+  ],
+  "edge_cases": [
+    {
+      "case": "empty_device_name",
+      "test_ids": ["TC003", "TC004", "TC009", "TC018"],
+      "handling": "Use marker tags and object index patterns"
+    },
+    {
+      "case": "ambiguous_marker_tags",
+      "test_ids": ["TC013"],
+      "handling": "Flag for manual review, reduce confidence"
+    },
+    {
+      "case": "missing_point_type_tag",
+      "test_ids": ["TC014"],
+      "handling": "Use units and object type for classification"
+    },
+    {
+      "case": "three_marker_tags",
+      "test_ids": ["TC010"],
+      "handling": "Parse all tags, use middle tag for point type"
+    },
+    {
+      "case": "generic_device",
+      "test_ids": ["TC017"],
+      "handling": "Classify as OTHER, use marker tags for point type"
+    },
+    {
+      "case": "central_plant",
+      "test_ids": ["TC008", "TC015"],
+      "handling": "Special handling for system-level points"
+    }
+  ],
+  "validation_tests": [
+    {
+      "test": "temperature_range",
+      "applies_to": ["TC006"],
+      "check": "value between 32-120°F",
+      "expected": "pass"
+    },
+    {
+      "test": "humidity_range",
+      "applies_to": ["TC001", "TC009", "TC016"],
+      "check": "value between 0-100%",
+      "expected": "pass"
+    },
+    {
+      "test": "damper_range",
+      "applies_to": ["TC004", "TC005", "TC013", "TC019"],
+      "check": "value between 0-100%",
+      "expected": "pass"
+    },
+    {
+      "test": "airflow_range",
+      "applies_to": ["TC012"],
+      "check": "value between 0-10000 CFM",
+      "expected": "pass"
+    },
+    {
+      "test": "pressure_range",
+      "applies_to": ["TC007"],
+      "check": "value between -2 to 5 inH2O",
+      "expected": "pass"
+    },
+    {
+      "test": "binary_values",
+      "applies_to": ["TC002", "TC008", "TC011", "TC015"],
+      "check": "value is 'active' or 'inactive'",
+      "expected": "pass"
+    }
+  ],
+  "confidence_distribution": {
+    "high_confidence": {
+      "count": 10,
+      "test_ids": ["TC001", "TC002", "TC005", "TC006", "TC007", "TC011", "TC012", "TC016", "TC019", "TC020"]
+    },
+    "medium_confidence": {
+      "count": 3,
+      "test_ids": ["TC009", "TC010", "TC013"]
+    },
+    "low_confidence": {
+      "count": 7,
+      "test_ids": ["TC003", "TC004", "TC008", "TC014", "TC015", "TC017", "TC018"]
+    }
+  },
+  "usage": {
+    "unit_tests": "Import these test cases into your test suite",
+    "integration_tests": "Use for end-to-end classification testing",
+    "regression_tests": "Ensure future changes don't break existing classifications",
+    "documentation": "Reference for expected behavior"
+  }
+}

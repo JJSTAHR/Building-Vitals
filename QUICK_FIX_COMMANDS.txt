@@ -1,0 +1,27 @@
+# QUICK FIX - Copy and run these commands
+
+# 1. Deploy the ACE token (use the one from your browser that's working)
+cd "C:\Users\jstahr\Desktop\Building Vitals"
+wrangler secret put ACE_API_KEY --env production
+
+# Paste this token when prompted:
+eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJmcmVzaCI6ZmFsc2UsImlhdCI6MTc1NzYxMTE4NiwianRpIjoiNjY1ZDM2NjMtZjFhZC00YWYxLTliZmEtNGMwMzRmMTllYjA4IiwidHlwZSI6ImFjY2VzcyIsImlkZW50aXR5Ijoic2VzXzAwMDFfZmFsbHNfY2l0eSIsIm5iZiI6MTc1NzYxMTE4NiwiZXhwIjoxNzg5MTQ3MTg2fQ.5g9JVBO_18x42srsJ4ZUNIqMbK6XeQDyrqqS-WEFc0g
+
+# 2. Deploy the worker
+wrangler deploy --env production
+
+# 3. Clear failed state
+wrangler kv:key delete --binding=BACKFILL_STATE "backfill_state" --env production
+
+# 4. Start backfill (PowerShell)
+$body = @{
+    site = "ses_falls_city"
+    start_date = "2024-01-01"
+    end_date = "2025-10-16"
+    reset = $true
+} | ConvertTo-Json
+
+Invoke-RestMethod -Uri "https://building-vitals-backfill.jstahr.workers.dev/trigger" -Method Post -Body $body -ContentType "application/json"
+
+# 5. Check status
+Invoke-RestMethod -Uri "https://building-vitals-backfill.jstahr.workers.dev/status"

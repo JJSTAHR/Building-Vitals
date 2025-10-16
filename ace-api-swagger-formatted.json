@@ -1,0 +1,464 @@
+{
+  "swagger": "2.0",
+  "basePath": "/api",
+  "info": {
+    "title": "ACE Deploy API",
+    "version": "1.0",
+    "description": "Manage deployed Gateways and Data"
+  },
+  "produces": ["application/json"],
+  "consumes": ["application/json"],
+  "securityDefinitions": {
+    "apiKey": {
+      "type": "apiKey",
+      "in": "header",
+      "name": "authorization"
+    }
+  },
+  "security": [{ "apiKey": [] }],
+  "tags": [
+    {
+      "name": "sites",
+      "description": "Operations related to Sites"
+    },
+    {
+      "name": "points",
+      "description": "Operations related to points"
+    },
+    {
+      "name": "clients",
+      "description": "Operations related to Clients"
+    },
+    {
+      "name": "gateways",
+      "description": "Operations related to Gateways"
+    }
+  ],
+  "paths": {
+    "/sites/": {
+      "get": {
+        "tags": ["sites"],
+        "summary": "Returns list of sites",
+        "operationId": "get_sites_collection",
+        "parameters": [
+          {
+            "name": "page",
+            "in": "query",
+            "type": "integer",
+            "description": "Page number",
+            "default": 1
+          },
+          {
+            "name": "per_page",
+            "in": "query",
+            "type": "integer",
+            "description": "Results per page",
+            "default": 10,
+            "enum": [2, 10, 20, 30, 40, 50, 100, 500, 1000, 5000, 10000, 100000]
+          },
+          {
+            "name": "collect_enabled",
+            "in": "query",
+            "type": "boolean",
+            "description": "Whether to collect only sites with at least one collect enabled point",
+            "default": false
+          },
+          {
+            "name": "show_archived",
+            "in": "query",
+            "type": "boolean",
+            "description": "Whether to collect archived sites",
+            "default": false
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "schema": {
+              "$ref": "#/definitions/Page of sites"
+            }
+          }
+        }
+      }
+    },
+    "/sites/{site_name}/points": {
+      "parameters": [
+        {
+          "name": "site_name",
+          "in": "path",
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "get": {
+        "tags": ["sites"],
+        "summary": "Get points for a particular site",
+        "operationId": "get_point_collection",
+        "parameters": [
+          {
+            "name": "page",
+            "in": "query",
+            "type": "integer",
+            "description": "Page number",
+            "default": 1
+          },
+          {
+            "name": "per_page",
+            "in": "query",
+            "type": "integer",
+            "description": "Results per page",
+            "default": 10,
+            "enum": [2, 10, 20, 30, 40, 50, 100, 500, 1000, 5000, 10000, 100000]
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "schema": {
+              "$ref": "#/definitions/Page of points"
+            }
+          }
+        }
+      }
+    },
+    "/sites/{site_name}/timeseries/paginated": {
+      "parameters": [
+        {
+          "name": "site_name",
+          "in": "path",
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "get": {
+        "tags": ["sites"],
+        "summary": "Returns a collection of timeseries for a site with pagination",
+        "description": "⚡ NEW: Supports RAW data retrieval with cursor-based pagination for high-resolution data visualization",
+        "operationId": "get_site_time_series_paginated",
+        "parameters": [
+          {
+            "name": "start_time",
+            "in": "query",
+            "type": "string",
+            "required": true,
+            "description": "ISO format start time"
+          },
+          {
+            "name": "end_time",
+            "in": "query",
+            "type": "string",
+            "required": true,
+            "description": "ISO format end time"
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "type": "string",
+            "description": "Cursor for pagination through timeseries data"
+          },
+          {
+            "name": "page_size",
+            "in": "query",
+            "type": "integer",
+            "description": "Number of records per page",
+            "default": 10000,
+            "enum": [3, 10, 50, 100, 500, 1000, 5000, 10000, 50000, 100000, 300000, 500000]
+          },
+          {
+            "name": "raw_data",
+            "in": "query",
+            "type": "boolean",
+            "description": "Set to True to return raw data without aggregation. False returns 5-minute buckets.",
+            "default": false
+          }
+        ],
+        "responses": {
+          "404": {
+            "description": "No data for time period"
+          },
+          "200": {
+            "description": "Success",
+            "schema": {
+              "$ref": "#/definitions/Paginated list of timeseries samples"
+            }
+          }
+        }
+      }
+    },
+    "/points/{point_name}/timeseries": {
+      "parameters": [
+        {
+          "name": "point_name",
+          "in": "path",
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "get": {
+        "tags": ["points"],
+        "summary": "Returns a point's timeseries",
+        "operationId": "get_point_time_series",
+        "parameters": [
+          {
+            "name": "start_time",
+            "in": "query",
+            "type": "string",
+            "required": true,
+            "description": "ISO format start time"
+          },
+          {
+            "name": "end_time",
+            "in": "query",
+            "type": "string",
+            "required": true,
+            "description": "ISO format end time"
+          }
+        ],
+        "responses": {
+          "404": {
+            "description": "Point not found."
+          },
+          "200": {
+            "description": "Success",
+            "schema": {
+              "$ref": "#/definitions/A list of timeseries samples"
+            }
+          }
+        }
+      }
+    },
+    "/points/get_timeseries": {
+      "post": {
+        "tags": ["points"],
+        "summary": "Returns list of Points timeseries data given a list of points name",
+        "description": "Batch endpoint for fetching multiple points' timeseries data in a single request",
+        "operationId": "post_point_collection_timeseries",
+        "parameters": [
+          {
+            "name": "start_time",
+            "in": "query",
+            "type": "string",
+            "required": true,
+            "description": "ISO format start time"
+          },
+          {
+            "name": "end_time",
+            "in": "query",
+            "type": "string",
+            "required": true,
+            "description": "ISO format end time"
+          },
+          {
+            "name": "payload",
+            "required": true,
+            "in": "body",
+            "schema": {
+              "$ref": "#/definitions/A list of points"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "schema": {
+              "$ref": "#/definitions/A list of timeseries samples"
+            }
+          }
+        }
+      }
+    }
+  },
+  "definitions": {
+    "Page of sites": {
+      "allOf": [
+        {
+          "$ref": "#/definitions/A page of results"
+        },
+        {
+          "properties": {
+            "items": {
+              "type": "array",
+              "items": {
+                "$ref": "#/definitions/A site"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "A site": {
+      "properties": {
+        "id": {
+          "type": "integer",
+          "description": "Unique ID for site"
+        },
+        "name": {
+          "type": "string",
+          "description": "Unique path for site"
+        },
+        "client": {
+          "type": "string",
+          "description": "client display name"
+        },
+        "address": {
+          "type": "string",
+          "description": "Address for Site"
+        },
+        "nice_name": {
+          "type": "string",
+          "description": "Nice Name for Site"
+        },
+        "latitude": {
+          "type": "number",
+          "description": "latitude of site in degrees"
+        },
+        "longitude": {
+          "type": "number",
+          "description": "longitude of site in degrees"
+        },
+        "archived": {
+          "type": "boolean",
+          "description": "Archived Site"
+        }
+      }
+    },
+    "Page of points": {
+      "allOf": [
+        {
+          "$ref": "#/definitions/A page of results"
+        },
+        {
+          "properties": {
+            "items": {
+              "type": "array",
+              "items": {
+                "$ref": "#/definitions/A point"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "A point": {
+      "properties": {
+        "id": {
+          "type": "integer",
+          "description": "Unique ID for point"
+        },
+        "name": {
+          "type": "string",
+          "description": "Point name/identifier"
+        },
+        "client": {
+          "type": "string",
+          "description": "Client this point belongs to"
+        },
+        "site": {
+          "type": "string",
+          "description": "Site this point belongs to"
+        },
+        "kv_tags": {
+          "type": "object",
+          "description": "Arbitrary key value tags, strings only",
+          "example": {
+            "key": "value"
+          }
+        },
+        "marker_tags": {
+          "type": "array",
+          "description": "Marker tags",
+          "items": {
+            "type": "string"
+          }
+        },
+        "collect_enabled": {
+          "type": "boolean",
+          "description": "Enable collection of data"
+        },
+        "collect_interval": {
+          "type": "integer",
+          "description": "Interval for collection in seconds"
+        },
+        "point_type": {
+          "type": "string",
+          "description": "Type of point for encoding/decoding configs"
+        }
+      }
+    },
+    "A page of results": {
+      "properties": {
+        "page": {
+          "type": "integer",
+          "description": "Number of this page of results"
+        },
+        "pages": {
+          "type": "integer",
+          "description": "Total number of pages of results"
+        },
+        "per_page": {
+          "type": "integer",
+          "description": "Number of items per page of results"
+        },
+        "total": {
+          "type": "integer",
+          "description": "Total number of results"
+        }
+      }
+    },
+    "A list of timeseries samples": {
+      "properties": {
+        "point_samples": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/Point Sample"
+          }
+        }
+      }
+    },
+    "Paginated list of timeseries samples": {
+      "properties": {
+        "point_samples": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/Point Sample"
+          }
+        },
+        "next_cursor": {
+          "type": "string",
+          "description": "A cursor to retrieve the next page of results"
+        },
+        "has_more": {
+          "type": "boolean",
+          "description": "Is there more data available"
+        }
+      }
+    },
+    "Point Sample": {
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Point Name"
+        },
+        "value": {
+          "type": "string",
+          "description": "Point Sample Value"
+        },
+        "time": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Timestamp of the sample"
+        }
+      }
+    },
+    "A list of points": {
+      "properties": {
+        "points": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/A point"
+          }
+        }
+      }
+    }
+  }
+}

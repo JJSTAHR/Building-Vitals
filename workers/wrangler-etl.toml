@@ -1,0 +1,238 @@
+# ============================================================================
+# Wrangler Configuration for Building Vitals ETL Sync Worker
+# ============================================================================
+# Cloudflare Workers configuration for scheduled ETL data synchronization
+# https://developers.cloudflare.com/workers/wrangler/configuration/
+
+name = "building-vitals-etl-sync"
+main = "../src/etl-sync-worker.js"
+compatibility_date = "2024-01-01"
+compatibility_flags = ["nodejs_compat"]
+
+# ============================================================================
+# Worker Configuration
+# ============================================================================
+
+# Automatically detect node_modules usage (already enabled in compatibility_flags above)
+
+# Workers Paid plan required for:
+# - Scheduled triggers (Cron Triggers)
+# - Longer CPU time (handles 6.48M samples/day)
+# - More memory
+
+workers_dev = true
+
+# ============================================================================
+# Scheduled Triggers - Run every 1 minute (fastest Cloudflare allows)
+# ============================================================================
+# Cron syntax: minute hour day month day-of-week
+# * * * * * = Every 1 minute (minimum interval for Cloudflare Workers)
+# Note: Sub-minute intervals (e.g., 30 seconds) are not supported
+
+[triggers]
+crons = ["* * * * *"]
+
+# ============================================================================
+# D1 Database Binding (Hot Storage - Last 20 Days)
+# ============================================================================
+# Connects to D1 database for timeseries storage
+# Create database: wrangler d1 create building-vitals-db
+
+[[d1_databases]]
+binding = "DB"
+database_name = "ace-iot-db"
+database_id = "1afc0a07-85cd-4d5f-a046-b580ffffb8dc"
+
+# ============================================================================
+# R2 Bucket Binding (Cold Storage - Historical Data >20 Days)
+# ============================================================================
+# Stores NDJSON.gz files for historical timeseries data
+# Create bucket: wrangler r2 bucket create ace-timeseries
+
+[[r2_buckets]]
+binding = "R2"
+bucket_name = "ace-timeseries"
+
+# ============================================================================
+# KV Namespace Binding
+# ============================================================================
+# Stores ETL state, errors, and metrics
+# Create KV: wrangler kv:namespace create "ETL_STATE"
+
+[[kv_namespaces]]
+binding = "ETL_STATE"
+id = "fa5e24f3f2ed4e3489a299e28f1bffaa"
+preview_id = "1468fbcbf23548f3acb88a9e574d3485"
+
+# ============================================================================
+# Environment Variables
+# ============================================================================
+# Non-sensitive configuration
+
+[vars]
+SITE_NAME = "ses_falls_city"
+ENVIRONMENT = "production"
+ACE_API_BASE = "https://flightdeck.aceiot.cloud/api"
+
+# ============================================================================
+# Secrets (set via wrangler secret put)
+# ============================================================================
+# These are NOT stored in this file, set via CLI:
+# wrangler secret put ACE_API_KEY -c workers/wrangler-etl.toml
+#
+# Required secrets:
+# - ACE_API_KEY: Authentication for ACE IoT API
+
+# ============================================================================
+# Development Environment
+# ============================================================================
+
+[env.development]
+name = "building-vitals-etl-sync-dev"
+workers_dev = true
+
+[env.development.vars]
+SITE_NAME = "building-a"
+ENVIRONMENT = "development"
+
+# Development D1 database
+[[env.development.d1_databases]]
+binding = "BUILDING_VITALS_DB"
+database_name = "building-vitals-db-dev"
+database_id = "your-dev-database-id"
+
+# Development KV namespace
+[[env.development.kv_namespaces]]
+binding = "ETL_STATE"
+id = "your-dev-kv-id"
+
+# Less frequent crons for dev (every 15 minutes)
+[env.development.triggers]
+crons = ["*/15 * * * *"]
+
+# ============================================================================
+# Staging Environment
+# ============================================================================
+
+[env.staging]
+name = "building-vitals-etl-sync-staging"
+route = "etl-staging.building-vitals.workers.dev"
+
+[env.staging.vars]
+SITE_NAME = "building-a"
+ENVIRONMENT = "staging"
+
+[[env.staging.d1_databases]]
+binding = "BUILDING_VITALS_DB"
+database_name = "building-vitals-db-staging"
+database_id = "your-staging-database-id"
+
+[[env.staging.kv_namespaces]]
+binding = "ETL_STATE"
+id = "your-staging-kv-id"
+
+# Same schedule as production
+[env.staging.triggers]
+crons = ["*/5 * * * *"]
+
+# ============================================================================
+# Production Environment
+# ============================================================================
+
+[env.production]
+name = "building-vitals-etl-sync"
+
+[env.production.vars]
+SITE_NAME = "ses_falls_city"
+ENVIRONMENT = "production"
+ACE_API_BASE = "https://flightdeck.aceiot.cloud/api"
+
+[[env.production.d1_databases]]
+binding = "DB"
+database_name = "ace-iot-db"
+database_id = "1afc0a07-85cd-4d5f-a046-b580ffffb8dc"
+
+[[env.production.r2_buckets]]
+binding = "R2"
+bucket_name = "ace-timeseries"
+
+[[env.production.kv_namespaces]]
+binding = "ETL_STATE"
+id = "fa5e24f3f2ed4e3489a299e28f1bffaa"
+
+[env.production.triggers]
+crons = ["* * * * *"]  # Every 1 minute - fastest Cloudflare allows
+
+[env.production.observability]
+enabled = true
+
+# ============================================================================
+# Resource Limits
+# ============================================================================
+# Workers Paid plan limits:
+# - CPU time: 50ms (Bundled) or 30s (Unbound)
+# - Memory: 128MB
+# - Subrequests: 50 (Bundled) or 1000 (Unbound)
+
+# Use Unbound for long-running ETL jobs
+[limits]
+cpu_ms = 30000
+
+# ============================================================================
+# Compatibility
+# ============================================================================
+# Features that improve performance and compatibility
+
+# Enable streams API for large data processing
+# Note: streams flag is implicit in compatibility_date
+
+# ============================================================================
+# Observability
+# ============================================================================
+# Logging and monitoring configuration
+
+[observability]
+enabled = true
+head_sampling_rate = 1.0
+
+# Logs everything in development
+[env.development.observability]
+head_sampling_rate = 1.0
+
+# ============================================================================
+# Deployment Commands
+# ============================================================================
+# Development:
+#   wrangler dev -c workers/wrangler-etl.toml
+#
+# Deploy to staging:
+#   wrangler deploy -c workers/wrangler-etl.toml --env staging
+#
+# Deploy to production:
+#   wrangler deploy -c workers/wrangler-etl.toml --env production
+#
+# Tail logs:
+#   wrangler tail -c workers/wrangler-etl.toml --env production
+#
+# Create D1 database:
+#   wrangler d1 create building-vitals-db
+#
+# Execute D1 migrations:
+#   wrangler d1 execute building-vitals-db --file=./workers/schema/d1-schema.sql
+#
+# Create KV namespace:
+#   wrangler kv:namespace create "ETL_STATE"
+#
+# Set secrets:
+#   wrangler secret put ACE_API_KEY -c workers/wrangler-etl.toml --env production
+#
+# Manual trigger:
+#   curl -X POST https://etl.building-vitals.workers.dev/trigger
+#
+# Check status:
+#   curl https://etl.building-vitals.workers.dev/status
+#
+# Health check:
+#   curl https://etl.building-vitals.workers.dev/health
+#
+# ============================================================================

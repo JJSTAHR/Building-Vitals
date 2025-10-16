@@ -1,0 +1,111 @@
+# ============================================================================
+# UNIFIED CLOUDFLARE CONFIGURATION
+# ============================================================================
+# This file contains the SINGLE SOURCE OF TRUTH for all Cloudflare resource IDs
+# All workers (ETL, Query, Backfill, Archival) MUST use these exact IDs
+#
+# Created: 2025-10-16
+# Purpose: Eliminate configuration drift and ensure all workers use same resources
+# ============================================================================
+
+[production]
+# ============================================================================
+# D1 DATABASE - HOT STORAGE (Recent 20 Days)
+# ============================================================================
+# CORRECT DATABASE ID (verified from deployment docs)
+database_id = "1afc0a07-85cd-4d5f-a046-b580ffffb8dc"
+database_name = "ace-iot-db"
+
+# ❌ UNUSED DATABASE ID - DO NOT USE
+# database_id = "b3901317-c387-4631-8654-750535cc18de"
+# This ID appears only in CLOUDFLARE_DEPLOYMENT_COMPLETE.md
+# It is NOT the production database used by workers
+# All workers use: 1afc0a07-85cd-4d5f-a046-b580ffffb8dc
+
+# ============================================================================
+# R2 BUCKET - COLD STORAGE (Historical Data >20 Days)
+# ============================================================================
+# CORRECT BUCKET NAME (verified from deployment docs)
+bucket_name = "ace-timeseries"
+
+# ❌ UNUSED BUCKET NAME - DO NOT USE
+# bucket_name = "building-vitals-timeseries"
+# This bucket name appears in some docs but is NOT used in production
+# All workers use: ace-timeseries
+
+# ============================================================================
+# KV NAMESPACE - STATE MANAGEMENT
+# ============================================================================
+# Shared KV namespace for all workers
+kv_namespace_id = "fa5e24f3f2ed4e3489a299e28f1bffaa"
+kv_namespace_preview_id = "1468fbcbf23548f3acb88a9e574d3485"
+
+# ============================================================================
+# COMMON ENVIRONMENT VARIABLES
+# ============================================================================
+# These settings are shared across all workers
+
+[production.vars]
+ENVIRONMENT = "production"
+SITE_NAME = "ses_falls_city"
+ACE_API_BASE = "https://flightdeck.aceiot.cloud/api"
+HOT_STORAGE_DAYS = "20"
+ARCHIVE_THRESHOLD_DAYS = "20"
+
+# ============================================================================
+# RESOURCE LIMITS
+# ============================================================================
+# All workers need extended CPU time for Parquet processing
+
+[production.limits]
+cpu_ms = 30000  # 30 seconds
+
+# ============================================================================
+# DEVELOPMENT ENVIRONMENT
+# ============================================================================
+
+[development]
+database_id = "your-dev-database-id"
+database_name = "ace-iot-db-dev"
+bucket_name = "ace-timeseries-dev"
+kv_namespace_id = "your-dev-kv-id"
+
+[development.vars]
+ENVIRONMENT = "development"
+SITE_NAME = "ses_falls_city"
+ACE_API_BASE = "https://flightdeck.aceiot.cloud/api"
+HOT_STORAGE_DAYS = "20"
+
+# ============================================================================
+# STAGING ENVIRONMENT
+# ============================================================================
+
+[staging]
+database_id = "your-staging-database-id"
+database_name = "ace-iot-db-staging"
+bucket_name = "ace-timeseries-staging"
+kv_namespace_id = "your-staging-kv-id"
+
+[staging.vars]
+ENVIRONMENT = "staging"
+SITE_NAME = "ses_falls_city"
+ACE_API_BASE = "https://flightdeck.aceiot.cloud/api"
+HOT_STORAGE_DAYS = "20"
+
+# ============================================================================
+# DEPLOYMENT VERIFICATION CHECKLIST
+# ============================================================================
+# Before deploying any worker, verify:
+#
+# 1. Database ID matches: 1afc0a07-85cd-4d5f-a046-b580ffffb8dc
+# 2. Bucket name matches: ace-timeseries
+# 3. KV namespace ID matches: fa5e24f3f2ed4e3489a299e28f1bffaa
+# 4. No hardcoded database_id = "b3901317-c387-4631-8654-750535cc18de"
+# 5. No hardcoded bucket_name = "building-vitals-timeseries"
+#
+# Use this command to validate:
+# grep -r "b3901317-c387-4631-8654-750535cc18de" workers/
+# grep -r "building-vitals-timeseries" workers/
+#
+# Expected result: NO MATCHES in workers/ directory
+# ============================================================================

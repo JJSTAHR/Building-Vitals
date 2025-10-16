@@ -1,0 +1,83 @@
+# Cloudflare Workers Configuration for Building Vitals
+
+name = "building-vitals-worker"
+main = "workers/services/ai-enhanced-worker-example.js"
+compatibility_date = "2024-10-01"
+
+# ============================================================================
+# BINDINGS
+# ============================================================================
+
+# D1 Database
+[[d1_databases]]
+binding = "DB"
+database_name = "building-vitals-db"
+database_id = "your-database-id"
+
+# R2 Bucket for caching
+[[r2_buckets]]
+binding = "TIMESERIES_CACHE"
+bucket_name = "building-vitals-cache"
+
+# Analytics Engine
+[[analytics_engine_datasets]]
+binding = "ANALYTICS"
+
+# ============================================================================
+# QUEUES
+# ============================================================================
+
+# Main chart processing queue
+[[queues.producers]]
+queue = "chart-processing-queue"
+binding = "CHART_QUEUE"
+
+# Main queue consumer
+[[queues.consumers]]
+queue = "chart-processing-queue"
+max_batch_size = 10
+max_batch_timeout = 30
+max_retries = 3
+dead_letter_queue = "chart-processing-dlq"
+
+# Dead letter queue consumer
+[[queues.consumers]]
+queue = "chart-processing-dlq"
+max_batch_size = 10
+max_batch_timeout = 30
+max_retries = 0  # No retries for DLQ
+
+# ============================================================================
+# SCHEDULED TASKS (CRON TRIGGERS)
+# ============================================================================
+
+# Daily cleanup at 2 AM UTC
+[triggers]
+crons = ["0 2 * * *"]
+
+# ============================================================================
+# ENVIRONMENT VARIABLES
+# ============================================================================
+
+[vars]
+ACE_API_URL = "https://api.ace-iot.com"
+ENVIRONMENT = "production"
+
+# ============================================================================
+# DEVELOPMENT SETTINGS
+# ============================================================================
+
+[env.development]
+name = "building-vitals-worker-dev"
+
+[env.development.vars]
+ACE_API_URL = "https://api-staging.ace-iot.com"
+ENVIRONMENT = "development"
+
+# ============================================================================
+# LIMITS
+# ============================================================================
+
+# Increase CPU time for large data processing
+[limits]
+cpu_ms = 30000  # 30 seconds max CPU time

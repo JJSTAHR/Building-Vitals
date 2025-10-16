@@ -1,0 +1,13 @@
+
+> building-vitals-tests@1.0.0 test
+> vitest run QuickWinsIntegration.test.tsx --run
+
+
+[1m[46m RUN [49m[22m [36mv3.2.4 [39m[90mC:/Users/jstahr/Desktop/Building Vitals[39m
+
+[31mNo test files found, exiting with code 1
+[39m
+[2mfilter: [22m[33mQuickWinsIntegration.test.tsx[39m
+[2minclude: [22m[33msrc/**/*.test.ts[2m, [22msrc/**/*.spec.ts[39m
+[2mexclude:  [22m[33mnode_modules[2m, [22mdist[2m, [22m.idea[2m, [22m.git[2m, [22m.cache[39m
+

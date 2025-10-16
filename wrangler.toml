@@ -1,0 +1,243 @@
+#:schema node_modules/wrangler/config-schema.json
+name = "ace-iot-proxy"
+main = "src/consolidated-ace-proxy-worker.js"
+compatibility_date = "2024-12-01"
+compatibility_flags = ["nodejs_compat"]
+
+# ============================================================================
+# D1 DATABASE BINDING (Hot Storage - 30 Days)
+# ============================================================================
+# PRODUCTION CONFIGURATION - See config/cloudflare-unified-config.toml for details
+# All workers MUST use this same database ID
+[[d1_databases]]
+binding = "DB"                           # Available as env.DB in Workers
+database_name = "ace-iot-db"
+database_id = "1afc0a07-85cd-4d5f-a046-b580ffffb8dc"  # Production database (verified)
+
+# Commands:
+#   Create:  wrangler d1 create ace-iot-db
+#   Migrate: wrangler d1 execute ace-iot-db --file=./migrations/001_initial_schema.sql
+#   Query:   wrangler d1 execute ace-iot-db --command="SELECT COUNT(*) FROM timeseries"
+#   Backup:  wrangler d1 backup create ace-iot-db
+
+# ============================================================================
+# R2 BUCKET BINDING (Cold Storage - 30+ Days)
+# ============================================================================
+[[r2_buckets]]
+binding = "BUCKET"                       # Available as env.BUCKET in Workers
+bucket_name = "ace-timeseries"
+preview_bucket_name = "ace-timeseries-preview"  # Separate bucket for development
+
+# Commands:
+#   Create: wrangler r2 bucket create ace-timeseries
+#   List:   wrangler r2 bucket list
+#   Upload: wrangler r2 object put ace-timeseries/test.txt --file=test.txt
+#   List:   wrangler r2 object list ace-timeseries --prefix=timeseries/2024/
+
+# ============================================================================
+# KV NAMESPACE BINDING (Sync State & Metadata)
+# ============================================================================
+# PRODUCTION CONFIGURATION - See config/cloudflare-unified-config.toml for details
+# All workers MUST use this same KV namespace
+[[kv_namespaces]]
+binding = "POINTS_KV"                    # Available as env.POINTS_KV in Workers
+id = "fa5e24f3f2ed4e3489a299e28f1bffaa"  # Production KV namespace (verified)
+preview_id = "1468fbcbf23548f3acb88a9e574d3485"  # Preview KV namespace
+
+# Use cases:
+#   - Cache latest values per point (reduce D1 reads by 80%)
+#   - Store archive manifests (point name -> R2 path mapping)
+#   - Track worker state (last archive timestamp, error counts)
+#   - Rate limiting and API quotas
+
+# Commands:
+#   Create: wrangler kv namespace create KV
+#   Write:  wrangler kv key put --binding=KV "latest:point:123" "{'value': 72.5, 'ts': 1704067200000}"
+#   Read:   wrangler kv key get --binding=KV "latest:point:123"
+#   List:   wrangler kv key list --binding=KV --prefix="latest:"
+
+# ============================================================================
+# CRON TRIGGERS (Scheduled Workers)
+# ============================================================================
+
+# Archive Worker: Move data older than 30 days from D1 to R2
+[triggers]
+crons = [
+  # Daily archive at 2:00 AM UTC (low traffic period)
+  "0 2 * * *"    # Format: "minute hour day month dayofweek"
+]
+
+# Alternative schedules:
+#   - Every 6 hours:    "0 */6 * * *"
+#   - Twice daily:      "0 2,14 * * *"     (2 AM and 2 PM UTC)
+#   - Hourly:           "0 * * * *"
+#   - Every 15 minutes: "*/15 * * * *"     (for testing)
+
+# Worker implementation:
+#   export default {
+#     async scheduled(event: ScheduledEvent, env: Env) {
+#       await archiveYesterdayData(env);
+#     }
+#   }
+
+# ============================================================================
+# ANALYTICS ENGINE BINDING (Optional: Query Metrics)
+# ============================================================================
+[[analytics_engine_datasets]]
+binding = "ANALYTICS"                    # Available as env.ANALYTICS in Workers
+
+# Use cases:
+#   - Log query execution times
+#   - Track API usage per endpoint
+#   - Monitor data quality metrics
+#   - Alert on anomalies
+
+# Example usage:
+#   env.ANALYTICS.writeDataPoint({
+#     blobs: ["query_timeseries", pointName],
+#     doubles: [durationMs, sampleCount],
+#     indexes: [userId]
+#   });
+
+# Query with GraphQL API:
+#   https://developers.cloudflare.com/analytics/analytics-engine/
+
+# ============================================================================
+# ENVIRONMENT VARIABLES
+# ============================================================================
+[vars]
+# Application configuration
+LOG_LEVEL = "info"                       # "debug", "info", "warn", "error"
+MAX_QUERY_RANGE_DAYS = "90"              # Prevent expensive queries
+ARCHIVE_RETENTION_DAYS = "365"           # Keep 1 year in R2 (configurable)
+ENABLE_PARQUET_CACHE = "true"            # Cache decoded Parquet in memory
+
+# SECURITY: CORS allowed origins (comma-separated)
+ALLOWED_ORIGINS = "https://yourdomain.com,https://app.yourdomain.com"
+
+# Data ingestion settings
+BATCH_INSERT_SIZE = "100"                # Insert N samples per transaction
+MAX_POINTS = "4500"                      # Reject points beyond this limit
+DEFAULT_SAMPLE_RATE_SEC = "60"           # Expected sample rate (1/minute)
+
+# Performance tuning
+D1_QUERY_TIMEOUT_MS = "30000"            # 30 second timeout for D1 queries
+R2_DOWNLOAD_TIMEOUT_MS = "60000"         # 60 second timeout for R2 downloads
+PARQUET_CHUNK_SIZE = "10000"             # Rows to process per chunk
+
+# Feature flags
+ENABLE_ARCHIVE_WORKER = "true"           # Enable/disable archiving
+ENABLE_QUALITY_CHECKS = "true"           # Validate data quality on insert
+ENABLE_COMPRESSION_STATS = "true"        # Log compression ratios
+
+# Secrets (add via: wrangler secret put <NAME>)
+#   - ACE_API_KEY: Authentication for ACE data source
+#   - BACKFILL_API_KEY: Authentication for backfill endpoint (Bearer token)
+#   - SENTRY_DSN: Error tracking
+#   - GRAFANA_API_KEY: Push metrics to Grafana Cloud
+
+# ============================================================================
+# DEVELOPMENT SETTINGS
+# ============================================================================
+[dev]
+port = 8787
+local_protocol = "http"
+
+# Use local D1 database for development
+# wrangler dev --local --persist
+
+# ============================================================================
+# PRODUCTION DEPLOYMENT
+# ============================================================================
+[env.production]
+name = "ace-iot-timeseries-prod"
+vars = { LOG_LEVEL = "warn", ENABLE_ARCHIVE_WORKER = "true" }
+
+# Deploy:
+#   wrangler deploy --env production
+
+# ============================================================================
+# STAGING DEPLOYMENT
+# ============================================================================
+[env.staging]
+name = "ace-iot-timeseries-staging"
+vars = { LOG_LEVEL = "debug", ENABLE_ARCHIVE_WORKER = "false" }
+
+# Use separate staging databases
+# [[env.staging.d1_databases]]
+# binding = "DB"
+# database_name = "ace-iot-db-staging"
+# database_id = ""  # Add after: wrangler d1 create ace-iot-db-staging
+
+[[env.staging.r2_buckets]]
+binding = "BUCKET"
+bucket_name = "ace-timeseries-staging"
+
+# Deploy:
+#   wrangler deploy --env staging
+
+# ============================================================================
+# OBSERVABILITY
+# ============================================================================
+
+# Enable tail logging:
+#   wrangler tail --env production --format=pretty
+
+# View D1 metrics:
+#   https://dash.cloudflare.com/?to=/:account/workers/d1
+
+# View R2 metrics:
+#   https://dash.cloudflare.com/?to=/:account/r2
+
+# ============================================================================
+# RESOURCE LIMITS (Cloudflare Workers)
+# ============================================================================
+# Free tier limits:
+#   - 100,000 requests/day
+#   - 10ms CPU time/request
+#   - 128 MB memory/request
+#   - 5 GB D1 storage
+#   - 10 GB R2 storage
+#
+# Paid tier limits (Workers Paid):
+#   - Unlimited requests ($0.30/million after 10M)
+#   - 50ms CPU time/request ($0.02/million CPU-ms after 30M)
+#   - 128 MB memory/request
+#   - 5 GB D1 storage + $0.75/GB
+#   - 10 GB R2 storage + $0.015/GB
+#
+# See: https://developers.cloudflare.com/workers/platform/pricing/
+
+# ============================================================================
+# MIGRATION WORKFLOW
+# ============================================================================
+# 1. Create D1 database:
+#    wrangler d1 create ace-iot-db
+#
+# 2. Update database_id in this file (copy from step 1 output)
+#
+# 3. Run initial migration:
+#    wrangler d1 execute ace-iot-db --file=./migrations/001_initial_schema.sql
+#
+# 4. Verify schema:
+#    wrangler d1 execute ace-iot-db --command=".schema"
+#
+# 5. Create R2 bucket:
+#    wrangler r2 bucket create ace-timeseries
+#
+# 6. Create KV namespace:
+#    wrangler kv namespace create KV
+#    wrangler kv namespace create KV --preview
+#
+# 7. Update kv_namespaces.id and kv_namespaces.preview_id in this file
+#
+# 8. Deploy worker:
+#    wrangler deploy
+#
+# 9. Test ingestion endpoint:
+#    curl -X POST https://ace-iot-timeseries.<account>.workers.dev/api/ingest \
+#      -H "Content-Type: application/json" \
+#      -d '{"point": "Building1.HVAC.Zone1.Temp", "value": 72.5, "timestamp": 1704067200000}'
+#
+# 10. Verify data in D1:
+#     wrangler d1 execute ace-iot-db --command="SELECT COUNT(*) FROM timeseries"

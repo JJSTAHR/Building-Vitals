@@ -1,0 +1,5 @@
+
+ ⛅️ wrangler 4.37.1 (update available 4.43.0)
+─────────────────────────────────────────────
+Successfully created tail, expires at 2025-10-16T07:55:10Z
+Connected to building-vitals-etl-sync, waiting for logs...

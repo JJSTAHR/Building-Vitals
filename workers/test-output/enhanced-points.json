@@ -1,0 +1,44 @@
+[
+  {
+    "Name": "SURGERYCHILLER-CWPUMPCommand",
+    "display_name": "SURGERYCHILLER CW Pump Command",
+    "equip_name": "SURGERYCHILLER",
+    "point_name": "CWPUMPCommand"
+  },
+  {
+    "Name": "SURGERYCHILLER-Capacity",
+    "display_name": "SURGERYCHILLER Capacity",
+    "equip_name": "SURGERYCHILLER",
+    "point_name": "Capacity"
+  },
+  {
+    "Name": "SURGERYCHILLER-CapacityLimit",
+    "display_name": "SURGERYCHILLER Capacity Limit",
+    "equip_name": "SURGERYCHILLER",
+    "point_name": "CapacityLimit"
+  },
+  {
+    "Name": "SURGERYCHILLER-CHWFlowSP",
+    "display_name": "SURGERYCHILLER CHW Flow SP",
+    "equip_name": "SURGERYCHILLER",
+    "point_name": "CHWFlowSP"
+  },
+  {
+    "Name": "AHU-01-ZoneTemp",
+    "display_name": "AHU-01 Zone Temp",
+    "equip_name": "AHU-01",
+    "point_name": "ZoneTemp"
+  },
+  {
+    "Name": "AHU-01-DamperPosition",
+    "display_name": "AHU-01 Damper Position",
+    "equip_name": "AHU-01",
+    "point_name": "DamperPosition"
+  },
+  {
+    "Name": "BOILER-01-SupplyTemp",
+    "display_name": "BOILER-01 Supply Temp",
+    "equip_name": "BOILER-01",
+    "point_name": "SupplyTemp"
+  }
+]

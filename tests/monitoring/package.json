@@ -1,0 +1,22 @@
+{
+  "name": "monitoring-tests",
+  "version": "1.0.0",
+  "description": "Monitoring and Analytics Test Suite",
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest watch",
+    "test:ui": "vitest --ui",
+    "test:coverage": "vitest run --coverage",
+    "test:unit": "vitest run unit/",
+    "test:integration": "vitest run integration/",
+    "test:performance": "vitest run performance/",
+    "validate:e2e": "tsx e2e/validate-analytics.ts"
+  },
+  "keywords": [
+    "monitoring",
+    "analytics",
+    "testing"
+  ],
+  "author": "",
+  "license": "ISC"
+}

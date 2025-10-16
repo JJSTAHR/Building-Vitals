@@ -1,0 +1,267 @@
+{
+  "equipment_types": {
+    "VAV": {
+      "description": "Variable Air Volume Box",
+      "patterns": [
+        "VAV_\\d+",
+        "VAV-\\d+",
+        "Vav\\d+",
+        "VAVR \\d+"
+      ],
+      "examples": ["VAV_811", "VAV-708", "Vav20", "VAVR 725"],
+      "common_points": [
+        { "index": "0", "type": "HeatSignal", "units": "percent" },
+        { "index": "8", "type": "Damper", "units": "percent" },
+        { "index": "9", "type": "Damper", "units": "percent" },
+        { "index": "10", "type": "Airflow", "units": "cubicFeetPerMinute" },
+        { "index": "102", "type": "RoomRH", "units": "percentRelativeHumidity" }
+      ],
+      "count": 40
+    },
+    "RTU": {
+      "description": "Roof Top Unit / Air Handling Unit",
+      "patterns": [
+        "Rtu\\d+",
+        "Ahu\\d+_\\d+",
+        "RTU\\d+",
+        "RTU\\d+N"
+      ],
+      "examples": ["Rtu2", "Ahu7_1", "Ahu6_1", "RTU2N", "RTU4"],
+      "common_points": [
+        { "index": "3", "type": "RaHumidity", "units": "percentRelativeHumidity" },
+        { "index": "6", "type": "SaFanStatus", "units": "binary" },
+        { "index": "9", "type": "RaPress", "units": "inchesOfWater" },
+        { "index": "40", "type": "RaFanTrack", "units": "noUnits" },
+        { "index": "48", "type": "SaPressSpt", "units": "noUnits" },
+        { "index": "56", "type": "SaTempSetptLoLim", "units": "noUnits" },
+        { "index": "57", "type": "SaTempManSetpt", "units": "noUnits" },
+        { "index": "58", "type": "SaTempWuSetpt", "units": "noUnits" },
+        { "index": "60", "type": "SaLowLimit", "units": "noUnits" }
+      ],
+      "count": 15
+    },
+    "RVB": {
+      "description": "Return Volume Box / Reheat Box (unclear)",
+      "patterns": [
+        "Rvb\\d+"
+      ],
+      "examples": ["Rvb02", "Rvb03"],
+      "common_points": [
+        { "index": "8", "type": "Damper", "units": "percent" },
+        { "index": "9", "type": "Damper", "units": "percent" }
+      ],
+      "count": 2,
+      "notes": "Marker tags indicate uncertainty about this equipment type"
+    },
+    "CHWS": {
+      "description": "Chilled Water System (Central Plant)",
+      "patterns": ["CHWS"],
+      "examples": ["CHWS"],
+      "common_points": [
+        { "index": "0", "type": "Cold Weather Pump Enable", "units": "binary" },
+        { "index": "8", "type": "Lag Chlr On Delay (min)", "units": "noUnits" },
+        { "index": "11", "type": "GlycolAlarm", "units": "binary" },
+        { "index": "24", "type": "CWP-1 Any Alarm", "units": "binary" },
+        { "index": "55", "type": "CH-1 Valve Call", "units": "binary" },
+        { "index": "200", "type": "BV 200", "units": "binary" }
+      ],
+      "count": 1
+    },
+    "UNKNOWN": {
+      "description": "Devices with empty or generic names",
+      "patterns": ["^$", "DEV\\d+"],
+      "examples": ["", "DEV1001"],
+      "count": 15,
+      "notes": "Requires marker tag parsing and object index pattern matching"
+    }
+  },
+  "point_type_taxonomy": {
+    "temperature": {
+      "marker_keywords": ["temp", "temperature"],
+      "unit_keywords": ["fahrenheit", "celsius", "degF", "degC"],
+      "subtypes": {
+        "RoomTemp": "Space temperature",
+        "DaTemp": "Discharge air temperature",
+        "RaTemp": "Return air temperature",
+        "SaTemp": "Supply air temperature",
+        "CWRTemp": "Chilled water return temperature"
+      }
+    },
+    "humidity": {
+      "marker_keywords": ["humidity", "rh", "roomrh"],
+      "unit_keywords": ["percentrelativehumidity", "relativehumidity"],
+      "subtypes": {
+        "RoomRH": "Space relative humidity",
+        "RaHumidity": "Return air humidity",
+        "Humidity": "General humidity measurement"
+      }
+    },
+    "airflow": {
+      "marker_keywords": ["airflow", "cfm", "fpm"],
+      "unit_keywords": ["cubicfeetperminute", "feetperminute", "cfm"],
+      "subtypes": {
+        "Airflow": "CFM measurement",
+        "SaFpm": "Supply air velocity",
+        "VavAirFlSpt": "VAV airflow setpoint"
+      }
+    },
+    "pressure": {
+      "marker_keywords": ["press", "pressure"],
+      "unit_keywords": ["inchesofwater", "inh2o"],
+      "subtypes": {
+        "RaPress": "Return air pressure",
+        "SaPress": "Supply air pressure",
+        "SaPressSpt": "Supply air pressure setpoint"
+      }
+    },
+    "control_signal": {
+      "marker_keywords": ["signal", "damper", "heat", "cool"],
+      "unit_keywords": ["percent"],
+      "subtypes": {
+        "HeatSignal": "Heating valve/coil signal",
+        "CoolSignal": "Cooling valve/coil signal",
+        "Damper": "Damper position"
+      }
+    },
+    "status": {
+      "marker_keywords": ["status", "enable", "alarm"],
+      "unit_keywords": [],
+      "object_types": ["binaryValue", "binaryInput"],
+      "subtypes": {
+        "SaFanStatus": "Supply fan status",
+        "RaFanStatus": "Return fan status",
+        "Alarm": "Alarm condition"
+      }
+    },
+    "setpoint": {
+      "marker_keywords": ["setpt", "setpoint", "spt", "limit"],
+      "unit_keywords": ["nounits"],
+      "subtypes": {
+        "SaTempSetpt": "Supply air temperature setpoint",
+        "SaTempWuSetpt": "Supply air warmup setpoint",
+        "SaTempLoLim": "Supply air temperature low limit",
+        "SaTempHiLim": "Supply air temperature high limit",
+        "BypassEnaSetpt": "Bypass enable setpoint"
+      }
+    },
+    "tracking": {
+      "marker_keywords": ["track", "offset"],
+      "unit_keywords": ["nounits"],
+      "subtypes": {
+        "RaFanTrack": "Return fan tracking",
+        "RaFanOffset": "Return fan offset"
+      }
+    }
+  },
+  "bacnet_object_types": {
+    "analogValue": {
+      "abbreviation": "AV",
+      "writable": true,
+      "description": "Writable analog points (control signals, setpoints)",
+      "common_uses": ["Damper positions", "Valve signals", "Setpoints", "Calculated values"]
+    },
+    "analogInput": {
+      "abbreviation": "AI",
+      "writable": false,
+      "description": "Read-only analog sensors",
+      "common_uses": ["Temperature sensors", "Pressure sensors", "Humidity sensors", "Airflow measurements"]
+    },
+    "binaryValue": {
+      "abbreviation": "BV",
+      "writable": true,
+      "description": "Writable binary points",
+      "common_uses": ["Enable/disable commands", "Mode selections"]
+    },
+    "binaryInput": {
+      "abbreviation": "BI",
+      "writable": false,
+      "description": "Read-only binary sensors",
+      "common_uses": ["Fan status", "Alarm conditions", "Switch positions"]
+    }
+  },
+  "location_codes": {
+    "A_series": {
+      "pattern": "A\\d{3}",
+      "description": "A-wing rooms (patient areas, specialty rooms)",
+      "examples": ["A181", "A244", "A246"]
+    },
+    "B_series": {
+      "pattern": "B\\d{3}",
+      "description": "B-wing rooms (administrative, support areas)",
+      "examples": ["B102", "B115", "B119", "B165", "B169", "B177", "B180", "B236", "B245"]
+    },
+    "C_series": {
+      "pattern": "C\\d{3}",
+      "description": "C-wing rooms (business offices, administration)",
+      "examples": ["C108", "C119", "C132"]
+    },
+    "1000_series": {
+      "pattern": "1\\d{3}",
+      "description": "1000-series rooms (medical offices, exam rooms)",
+      "examples": ["1202", "1212", "1213", "1214", "1218", "1222", "1224", "1254", "1307", "1315", "1413"]
+    }
+  },
+  "parsing_priority": {
+    "equipment_identification": [
+      "1. Bacnet Data: device_name (primary source)",
+      "2. Marker Tags: equipment identifiers (RTU#, etc.)",
+      "3. Name path: device address (fallback)"
+    ],
+    "point_type_identification": [
+      "1. Marker Tags: second tag after comma (most reliable)",
+      "2. Bacnet Data: object_units (definitive for measurement type)",
+      "3. Bacnet Data: object_name (technical name)",
+      "4. Name path: object_type + object_index (pattern matching)"
+    ],
+    "location_identification": [
+      "1. Marker Tags: first tag before comma (human-readable location)",
+      "2. Location codes: A###/B###/C###/1### patterns"
+    ]
+  },
+  "data_quality_notes": {
+    "empty_device_names": {
+      "percentage": "15-20%",
+      "description": "Points with empty device_name field",
+      "handling": "Use marker tags and object index patterns for classification"
+    },
+    "ambiguous_markers": {
+      "examples": [
+        "VAVR 725 (WHAT ROOM?)",
+        "RVB02 - WHAT IS THIS?"
+      ],
+      "description": "Incomplete commissioning data",
+      "handling": "Flag for manual review, use 'UNKNOWN' category"
+    },
+    "empty_point_type": {
+      "percentage": "100%",
+      "description": "Point Type field is empty for all sampled points",
+      "handling": "Do not rely on this field, use multi-field parsing"
+    }
+  },
+  "validation_rules": {
+    "temperature": {
+      "expected_range": "32-120 °F",
+      "units": ["degreesFahrenheit", "degreesCelsius", "noUnits"]
+    },
+    "humidity": {
+      "expected_range": "0-100 %RH",
+      "units": ["percentRelativeHumidity"]
+    },
+    "damper_position": {
+      "expected_range": "0-100 %",
+      "units": ["percent"]
+    },
+    "airflow": {
+      "expected_range": "0-10000 CFM",
+      "units": ["cubicFeetPerMinute", "feetPerMinute"]
+    },
+    "pressure": {
+      "expected_range": "-2 to 5 inches H2O",
+      "units": ["inchesOfWater"]
+    },
+    "binary_status": {
+      "expected_values": ["active", "inactive"],
+      "units": []
+    }
+  }
+}

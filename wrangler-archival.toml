@@ -1,0 +1,43 @@
+# Wrangler configuration for Archival Worker
+# Archives old D1 data to R2 as Parquet files daily
+
+name = "building-vitals-archival"
+main = "./src/archival-worker.js"
+compatibility_date = "2024-09-23"
+compatibility_flags = ["nodejs_compat"]
+
+# Cron trigger - runs daily at 2 AM UTC
+[triggers]
+crons = ["0 2 * * *"]
+
+# D1 Database binding
+[[d1_databases]]
+binding = "DB"
+database_name = "ace-iot-db"
+database_id = "1afc0a07-85cd-4d5f-a046-b580ffffb8dc"
+
+# R2 Bucket binding
+[[r2_buckets]]
+binding = "R2"
+bucket_name = "ace-timeseries"
+
+# KV Namespace binding for logging
+[[kv_namespaces]]
+binding = "KV"
+id = "fa5e24f3f2ed4e3489a299e28f1bffaa"
+
+# Environment variables
+[vars]
+ARCHIVE_THRESHOLD_DAYS = "20"
+BATCH_SIZE = "10000"
+MAX_RETRIES = "3"
+
+# Node.js compatibility already enabled in compatibility_flags
+
+# Build configuration
+[build]
+command = "npm install parquet-wasm hyparquet"
+
+# Limits
+[limits]
+cpu_ms = 30000

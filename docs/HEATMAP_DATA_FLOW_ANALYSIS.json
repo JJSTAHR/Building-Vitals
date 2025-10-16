@@ -1,0 +1,204 @@
+{
+  "rootCauseAnalysis": {
+    "issue": "Tooltip showing wrong device names in EChartsDeviceDeviationHeatmap",
+    "severity": "CRITICAL",
+    "discoveredDate": "2025-10-16",
+    "rootCause": "INDEX MISMATCH between series array and chartData.yAxis array"
+  },
+
+  "dataFlowPipeline": {
+    "step1_input": {
+      "source": "series prop (input to component)",
+      "format": "Array<{ name: string, data: [timestamp, value][], unit?: string }>",
+      "example": [
+        "{ name: 'ses_falls_city/Vav707.points.Damper', data: [[1697481600000, 45.2], ...] }",
+        "{ name: 'ses_falls_city/Vav708.points.Damper', data: [[1697481600000, 48.1], ...] }"
+      ],
+      "notes": "Original device names from API - UNMODIFIED order"
+    },
+
+    "step2_heatmapCells": {
+      "location": "EChartsDeviceDeviationHeatmap.tsx lines 535-628",
+      "transformation": "series → heatmapCells",
+      "logic": "Aggregates raw values into time buckets, calculates deviations",
+      "format": "Array<{ device: string, timestamp: number, value: number, deviation: number }>",
+      "keyPoint": "Uses series[].name as device identifier - PRESERVES ORIGINAL NAMES"
+    },
+
+    "step3_aggregatedData": {
+      "location": "EChartsDeviceDeviationHeatmap.tsx lines 631-673",
+      "transformation": "heatmapCells → aggregatedData (no-op in this case)",
+      "format": "Array<{ device: string, timestamp: number, maxDeviation: number, diagnostics: {...} }>",
+      "keyPoint": "Still uses original device names from series"
+    },
+
+    "step4_chartData": {
+      "location": "EChartsDeviceDeviationHeatmap.tsx lines 676-678",
+      "transformation": "aggregatedData → chartData via optimizeHeatmapForECharts()",
+      "implementationFile": "adaptiveHeatmapRendering.ts lines 331-440",
+      "criticalTransformation": {
+        "line349": "const devices = [...new Set(data.map(d => d.device))].sort();",
+        "effect": "CREATES NEW SORTED ARRAY - ORDER CHANGES!",
+        "line368": "const deviceIndex = new Map(devices.map((d, i) => [d, i]));",
+        "line374": "deviceIndex.get(cell.device)!",
+        "result": "chartData.yAxis is SORTED alphabetically, NOT in series order"
+      },
+      "outputFormat": {
+        "data": "Array<[xIndex, yIndex, deviationValue]>",
+        "xAxis": "string[] (time labels)",
+        "yAxis": "string[] (SORTED device names - DIFFERENT ORDER THAN series!)"
+      }
+    },
+
+    "step5_yAxisLabels": {
+      "location": "EChartsDeviceDeviationHeatmap.tsx line 1016",
+      "transformation": "series → formatted point names for display",
+      "code": "yAxis: { data: series.map(s => formatPointName(...)) }",
+      "format": "Array of cleaned/formatted names like 'VAV-707 Damper'",
+      "keyPoint": "Uses series ORDER (not sorted) - MISMATCH with chartData.yAxis!"
+    },
+
+    "step6_tooltip": {
+      "location": "EChartsDeviceDeviationHeatmap.tsx lines 681-894",
+      "ecchartsParams": {
+        "structure": "params.value = [xIndex, yIndex, deviationValue]",
+        "yIndexMeaning": "Index into chartData.data - corresponds to SORTED yAxis array"
+      },
+      "buggyCode": {
+        "line697": "const rawDeviceName = series[yIndex]?.name;",
+        "assumption": "yIndex maps to series array index",
+        "actualMeaning": "yIndex maps to chartData.yAxis (sorted) index",
+        "result": "WRONG DEVICE NAME when orders differ"
+      },
+      "correctApproach": {
+        "line693": "const timestamp = chartData.xAxis?.[xIndex];",
+        "line902": "const device = chartData.yAxis[yIndex];",
+        "inconsistency": "Line 902 correctly uses chartData.yAxis, but line 697 incorrectly uses series array"
+      }
+    }
+  },
+
+  "keyFiles": [
+    "C:\\Users\\jstahr\\Desktop\\Building Vitals\\Building-Vitals\\src\\components\\charts\\EChartsDeviceDeviationHeatmap.tsx",
+    "C:\\Users\\jstahr\\Desktop\\Building Vitals\\Building-Vitals\\src\\utils\\adaptiveHeatmapRendering.ts"
+  ],
+
+  "criticalAssumptions": [
+    "WRONG: yIndex from ECharts tooltip corresponds to series array index",
+    "CORRECT: yIndex corresponds to chartData.yAxis index (which is sorted)",
+    "WRONG: series order matches chartData.yAxis order",
+    "CORRECT: chartData.yAxis is alphabetically sorted, series is not"
+  ],
+
+  "potentialIssues": [
+    {
+      "issue": "Index mismatch between series and chartData.yAxis",
+      "location": "EChartsDeviceDeviationHeatmap.tsx line 697",
+      "impact": "Tooltip shows wrong device name",
+      "severity": "CRITICAL"
+    },
+    {
+      "issue": "Inconsistent device name retrieval",
+      "locations": ["line 697 uses series[yIndex]", "line 902 uses chartData.yAxis[yIndex]"],
+      "impact": "Confusion between raw and sorted device names",
+      "severity": "HIGH"
+    },
+    {
+      "issue": "Multiple device name formats",
+      "locations": ["series[].name (raw API name)", "chartData.yAxis (sorted raw names)", "yAxis.data (formatted display names)"],
+      "impact": "Difficult to track which format is being used where",
+      "severity": "MEDIUM"
+    }
+  ],
+
+  "rootCauseHypothesis": "The optimizeHeatmapForECharts() function SORTS device names alphabetically (line 349 in adaptiveHeatmapRendering.ts), creating a new yAxis array with a different order than the input series array. The tooltip formatter incorrectly assumes yIndex (from ECharts) maps to the series array index, when it actually maps to the SORTED chartData.yAxis array. This causes a mismatch whenever the alphabetical sort order differs from the series input order.",
+
+  "proofOfBug": {
+    "scenario": "Input series order vs. Sorted order",
+    "inputOrder": [
+      "series[0] = 'ses_falls_city/Vav708.points.Damper'",
+      "series[1] = 'ses_falls_city/Vav707.points.Damper'"
+    ],
+    "afterSorting": {
+      "chartData.yAxis[0]": "ses_falls_city/Vav707.points.Damper",
+      "chartData.yAxis[1]": "ses_falls_city/Vav708.points.Damper"
+    },
+    "tooltipBehavior": {
+      "hoveringCell": "VAV-707 Damper (yIndex=0 in sorted array)",
+      "buggyLookup": "series[0]?.name = 'ses_falls_city/Vav708.points.Damper'",
+      "correctLookup": "chartData.yAxis[0] = 'ses_falls_city/Vav707.points.Damper'",
+      "result": "Tooltip shows VAV-708 data when hovering VAV-707 cell"
+    }
+  },
+
+  "solution": {
+    "approach": "Use chartData.yAxis for device name lookup instead of series array",
+    "changes": [
+      {
+        "file": "EChartsDeviceDeviationHeatmap.tsx",
+        "line": 697,
+        "current": "const rawDeviceName = series[yIndex]?.name;",
+        "fixed": "const rawDeviceName = chartData.yAxis[yIndex];",
+        "explanation": "yIndex is an index into the SORTED chartData.yAxis array, not the series array"
+      }
+    ],
+    "verification": [
+      "Check tooltip shows correct device name when hovering cells",
+      "Verify device order in yAxis matches visual heatmap order",
+      "Test with multiple devices in different alphabetical vs. input orders"
+    ]
+  },
+
+  "additionalFindings": {
+    "inconsistentPatterns": [
+      {
+        "location": "Line 693",
+        "code": "const timestamp = chartData.xAxis?.[xIndex];",
+        "pattern": "Correctly uses chartData for x-axis lookup"
+      },
+      {
+        "location": "Line 697",
+        "code": "const rawDeviceName = series[yIndex]?.name;",
+        "pattern": "INCORRECTLY uses series for y-axis lookup"
+      },
+      {
+        "location": "Line 902",
+        "code": "const device = chartData.yAxis[yIndex];",
+        "pattern": "Correctly uses chartData for y-axis lookup"
+      }
+    ],
+    "note": "The code already correctly uses chartData.yAxis in line 902 (handleCellClick), but incorrectly uses series[yIndex] in line 697 (tooltipFormatter). This inconsistency suggests the bug was introduced during a refactor or copy-paste error."
+  },
+
+  "relatedCode": {
+    "sortingLogic": {
+      "file": "adaptiveHeatmapRendering.ts",
+      "line": 349,
+      "code": "const devices = [...new Set(data.map(d => d.device))].sort();",
+      "purpose": "Creates sorted unique device list for consistent heatmap layout",
+      "sideEffect": "Changes device order from input series order"
+    },
+    "indexMapping": {
+      "file": "adaptiveHeatmapRendering.ts",
+      "lines": "368-374",
+      "code": "const deviceIndex = new Map(devices.map((d, i) => [d, i]));",
+      "purpose": "Maps device names to yIndex in sorted order",
+      "usage": "Used to create chartData.data tuples [xIndex, yIndex, value]"
+    }
+  },
+
+  "impactAssessment": {
+    "affectedComponents": ["EChartsDeviceDeviationHeatmap tooltip"],
+    "userExperience": "Users see incorrect device information when hovering heatmap cells",
+    "dataIntegrity": "No data corruption - only display issue",
+    "frequency": "Occurs whenever device names are not already in alphabetical order",
+    "workaround": "None - users must mentally map sorted visual order to tooltip data"
+  },
+
+  "recommendations": [
+    "IMMEDIATE: Fix line 697 to use chartData.yAxis[yIndex] instead of series[yIndex]",
+    "SHORT-TERM: Add validation to ensure series order matches chartData.yAxis order or document the difference",
+    "LONG-TERM: Refactor to maintain consistent device ordering throughout the pipeline",
+    "TESTING: Add unit test that verifies tooltip shows correct device when series order != alphabetical order"
+  ]
+}

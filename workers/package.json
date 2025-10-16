@@ -1,0 +1,39 @@
+{
+  "name": "building-vitals-workers",
+  "version": "1.0.0",
+  "description": "Cloudflare Workers for Building Vitals timeseries data processing",
+  "type": "module",
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:critical-fixes": "vitest run tests/critical-fixes.test.js",
+    "test:dlq": "vitest run tests/dlq-handler.test.js",
+    "test:coverage": "vitest run --coverage",
+    "test:ui": "vitest --ui",
+    "deploy": "wrangler deploy",
+    "deploy:dlq": "wrangler queues create chart-processing-dlq && wrangler d1 execute building-vitals-db --file=schema/d1-migrations.sql && wrangler deploy",
+    "dlq:stats": "curl -s https://building-vitals-worker.workers.dev/api/queue/dlq/stats | jq",
+    "dlq:failures": "curl -s https://building-vitals-worker.workers.dev/api/queue/dlq/failures | jq",
+    "dlq:recover": "./scripts/recover-dlq-jobs.sh",
+    "logs": "wrangler tail building-vitals-worker --format=pretty",
+    "logs:dlq": "wrangler tail building-vitals-worker | grep DLQ",
+    "etl:dev": "wrangler dev -c wrangler-etl.toml",
+    "etl:deploy": "wrangler deploy -c wrangler-etl.toml --env production",
+    "etl:deploy:staging": "wrangler deploy -c wrangler-etl.toml --env staging",
+    "etl:logs": "wrangler tail -c wrangler-etl.toml --env production",
+    "etl:d1:migrate": "wrangler d1 execute building-vitals-db --file=schema/d1-schema.sql",
+    "etl:kv:create": "wrangler kv:namespace create ETL_STATE",
+    "etl:secret:set": "wrangler secret put ACE_API_KEY -c wrangler-etl.toml",
+    "etl:trigger": "curl -X POST http://localhost:8787/trigger",
+    "etl:status": "curl http://localhost:8787/status",
+    "etl:health": "curl http://localhost:8787/health"
+  },
+  "devDependencies": {
+    "vitest": "^1.0.0",
+    "@vitest/ui": "^1.0.0",
+    "@vitest/coverage-v8": "^1.0.0"
+  },
+  "dependencies": {
+    "@cloudflare/workers-types": "^4.20231218.0"
+  }
+}

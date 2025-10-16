@@ -1,0 +1,204 @@
+===============================================================================
+R2 BUCKET CONTENTS ANALYSIS - HISTORICAL DATA AVAILABILITY
+===============================================================================
+
+CONTEXT:
+- Query worker can now read from R2 (code exists in /src/lib/r2-client.js)
+- Backfill operation found 0 historical samples
+- Need to determine if R2 has NDJSON.gz files or if bucket is empty
+
+===============================================================================
+KEY FINDINGS FROM CODE ANALYSIS
+===============================================================================
+
+1. ETL WORKER ISSUE (CRITICAL FINDING)
+   File: /src/etl-sync-worker.js
+   
+   Problem: ETL worker writes ONLY to D1 database, NOT to R2!
+   
+   Evidence:
+   - Lines 260-341: syncAllPointsNoFilter() function
+   - Line 332-335: Calls batchInsertTimeseries(env.DB, ...) 
+   - NO CALL to writeNDJSONToR2()
+   - R2 bucket binding not present in worker code
+   
+   Impact: 
+   - R2 bucket is likely EMPTY
+   - Data flows: ACE API -> ETL Worker -> D1 (hot storage)
+   - No data reaches R2 (cold storage)
+   - This explains why backfill found 0 samples from R2
+
+2. R2 CLIENT READY
+   File: /src/lib/r2-client.js
+   
+   Functions available:
+   - queryR2Timeseries() - Query R2 files (Line 51)
+   - listTimeseriesFiles() - List files for a site (Line 316)
+   - listNDJSONFiles() - List with pagination (r2-ndjson-writer.js Line 353)
+   - generateFilePaths() - Build expected paths (Line 114)
+   - readAndFilterNDJSONFile() - Read individual file (Line 160)
+   
+   Status: READY but NOTHING TO QUERY (bucket likely empty)
+
+3. EXPECTED PATH FORMAT
+   Pattern: timeseries/{site}/{YYYY}/{MM}/{DD}.ndjson.gz
+   
+   Examples (if data existed):
+   - timeseries/ses_falls_city/2025/10/15.ndjson.gz
+   - timeseries/ses_falls_city/2025/10/14.ndjson.gz
+   - timeseries/ses_falls_city/2025/09/15.ndjson.gz
+
+4. R2 BUCKET CONFIGURATION
+   File: /wrangler.toml
+   
+   Binding: BUCKET (Line 29)
+   Bucket name: ace-timeseries (Line 30)
+   Preview bucket: ace-timeseries-preview (Line 31)
+   
+   Status: Configured but NOT BEING WRITTEN TO
+
+===============================================================================
+HOW TO CHECK R2 BUCKET CONTENTS
+===============================================================================
+
+OPTION 1: CLOUDFLARE DASHBOARD (Recommended)
+Step 1: Log into Cloudflare Dashboard
+Step 2: Navigate to R2 > ace-timeseries bucket
+Step 3: Browse timeseries/ses_falls_city/ directory
+Step 4: Look for NDJSON.gz files by date
+
+Expected to see:
+- Empty (most likely)
+OR
+- Files organized by year/month/day if backfill was run
+
+OPTION 2: TEMPORARY DIAGNOSTIC WORKER
+File created: /diagnostic-r2-check.js
+
+To deploy:
+  npx wrangler publish diagnostic-r2-check.js --name temp-r2-checker
+
+To call:
+  curl "https://temp-r2-checker.your-account.workers.dev?site=ses_falls_city"
+  curl "https://temp-r2-checker.your-account.workers.dev?site=ses_falls_city&date=2025/10"
+
+Response will include:
+  - Total files found
+  - Date range of data
+  - File sizes and ages
+  - Recommendations
+
+OPTION 3: WRANGLER CLI (Limited)
+  npx wrangler r2 bucket list          # List buckets
+  npx wrangler r2 bucket info ace-timeseries  # Bucket info
+  npx wrangler r2 object get ace-timeseries/timeseries/ses_falls_city/2025/10/15.ndjson.gz --file=test.ndjson.gz
+
+OPTION 4: USE API + NODE SCRIPT
+Create a Node.js script that:
+  - Uses Cloudflare API
+  - Requires CLOUDFLARE_API_TOKEN environment variable
+  - Lists R2 bucket contents
+
+===============================================================================
+NEXT ACTIONS (PRIORITY ORDER)
+===============================================================================
+
+IMMEDIATE (Check R2 Contents):
+1. [ ] Use Cloudflare Dashboard to browse R2 bucket
+   - Go to: https://dash.cloudflare.com/
+   - Navigate to: R2 > ace-timeseries > timeseries/ses_falls_city/
+   - Check if ANY files exist
+
+2. [ ] If NO files found:
+   - Issue is: ETL worker is not writing to R2
+   - Action: Enable R2 writes in ETL worker
+   - See: Solution A (below)
+
+3. [ ] If files ARE found:
+   - Issue is: Query worker not reading them correctly
+   - Action: Debug query parameters and filtering
+   - See: Solution B (below)
+
+SHORT TERM (Fix the Problem):
+Solution A - IF R2 IS EMPTY:
+  1. Modify /src/etl-sync-worker.js
+  2. Add R2 bucket binding: env.BUCKET
+  3. Add writeNDJSONToR2() call after D1 insert
+  4. Deploy updated ETL worker
+  5. Wait for next scheduled sync (5 minutes)
+  
+  Code addition:
+    const writeResult = await writeNDJSONToR2(
+      env.BUCKET,
+      siteName,
+      new Date().toISOString().split('T')[0],
+      allNormalizedSamples,
+      { append: true }
+    );
+
+Solution B - IF R2 HAS FILES:
+  1. Check query parameters in backfill request
+  2. Verify site name matches exactly (case-sensitive)
+  3. Verify time ranges are correct (milliseconds vs seconds)
+  4. Check if point names filtering is too restrictive
+  5. Test query directly with curl
+
+MID TERM (Historical Backfill):
+  1. Once R2 writes are enabled, data will start accumulating
+  2. For historical data (September/earlier):
+     - Option 1: Wait for ETL to sync (24 hours lookback)
+     - Option 2: Manually backfill from D1 to R2
+     - Option 3: Run custom backfill worker
+
+LONG TERM (Monitoring):
+  1. Add metrics logging to track R2 writes
+  2. Set up alerting if R2 writes fail
+  3. Monitor compression ratios
+  4. Archive old data automatically
+
+===============================================================================
+FILE REFERENCES
+===============================================================================
+
+Core Files:
+  /src/etl-sync-worker.js          - ETL worker (needs R2 writes added)
+  /src/lib/r2-client.js            - R2 query client (ready)
+  /src/lib/r2-ndjson-writer.js     - R2 write client (ready)
+  /wrangler.toml                   - Configuration (already set up)
+
+Configuration:
+  R2 Bucket: ace-timeseries
+  Binding: env.BUCKET
+  Site: ses_falls_city
+  Path Format: timeseries/{site}/{YYYY}/{MM}/{DD}.ndjson.gz
+
+Functions to use:
+  writeNDJSONToR2()         - Write compressed daily files
+  listNDJSONFiles()         - List available files
+  queryR2Timeseries()       - Query range of files
+  readNDJSONFromR2()        - Read single day file
+
+===============================================================================
+SUMMARY
+===============================================================================
+
+Current State: R2 bucket is likely EMPTY
+
+Root Cause: ETL worker syncs only to D1, not R2
+
+Impact on Backfill:
+  - Backfill correctly queries R2 (returns empty)
+  - Falls back to D1 (should work, but might have query issues)
+  - Result: 0 samples = empty R2 + possibly narrow D1 query
+
+Solution: Enable R2 writes in ETL worker
+
+Timeline:
+  - Immediate: Verify R2 bucket is empty (Cloudflare Dashboard)
+  - Quick Fix: Add R2 writes to ETL worker (30 minutes)
+  - Data Start: Next ETL sync cycle (5 minutes after deploy)
+  - Full History: 24 hours after deploy (backfill features)
+
+Next Step: Check Cloudflare Dashboard for R2 bucket contents
+
+===============================================================================

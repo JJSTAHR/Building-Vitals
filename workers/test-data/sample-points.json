@@ -1,0 +1,127 @@
+{
+  "description": "Sample test data for integration testing",
+  "site": "ses_falls_city",
+  "rawPoints": [
+    {
+      "Name": "SURGERYCHILLER-CWPUMPCommand",
+      "display_name": null,
+      "equip_name": "SURGERYCHILLER",
+      "point_name": "CWPUMPCommand"
+    },
+    {
+      "Name": "SURGERYCHILLER-Capacity",
+      "display_name": null,
+      "equip_name": "SURGERYCHILLER",
+      "point_name": "Capacity"
+    },
+    {
+      "Name": "SURGERYCHILLER-CapacityLimit",
+      "display_name": null,
+      "equip_name": "SURGERYCHILLER",
+      "point_name": "CapacityLimit"
+    },
+    {
+      "Name": "SURGERYCHILLER-CHWFlowSP",
+      "display_name": null,
+      "equip_name": "SURGERYCHILLER",
+      "point_name": "CHWFlowSP"
+    },
+    {
+      "Name": "AHU-01-ZoneTemp",
+      "display_name": null,
+      "equip_name": "AHU-01",
+      "point_name": "ZoneTemp"
+    },
+    {
+      "Name": "AHU-01-DamperPosition",
+      "display_name": null,
+      "equip_name": "AHU-01",
+      "point_name": "DamperPosition"
+    },
+    {
+      "Name": "BOILER-01-SupplyTemp",
+      "display_name": null,
+      "equip_name": "BOILER-01",
+      "point_name": "SupplyTemp"
+    }
+  ],
+  "enhancedPoints": [
+    {
+      "Name": "SURGERYCHILLER-CWPUMPCommand",
+      "display_name": "SURGERYCHILLER CW Pump Command",
+      "equip_name": "SURGERYCHILLER",
+      "point_name": "CWPUMPCommand"
+    },
+    {
+      "Name": "SURGERYCHILLER-Capacity",
+      "display_name": "SURGERYCHILLER Capacity",
+      "equip_name": "SURGERYCHILLER",
+      "point_name": "Capacity"
+    },
+    {
+      "Name": "SURGERYCHILLER-CapacityLimit",
+      "display_name": "SURGERYCHILLER Capacity Limit",
+      "equip_name": "SURGERYCHILLER",
+      "point_name": "CapacityLimit"
+    },
+    {
+      "Name": "SURGERYCHILLER-CHWFlowSP",
+      "display_name": "SURGERYCHILLER CHW Flow SP",
+      "equip_name": "SURGERYCHILLER",
+      "point_name": "CHWFlowSP"
+    },
+    {
+      "Name": "AHU-01-ZoneTemp",
+      "display_name": "AHU-01 Zone Temp",
+      "equip_name": "AHU-01",
+      "point_name": "ZoneTemp"
+    },
+    {
+      "Name": "AHU-01-DamperPosition",
+      "display_name": "AHU-01 Damper Position",
+      "equip_name": "AHU-01",
+      "point_name": "DamperPosition"
+    },
+    {
+      "Name": "BOILER-01-SupplyTemp",
+      "display_name": "BOILER-01 Supply Temp",
+      "equip_name": "BOILER-01",
+      "point_name": "SupplyTemp"
+    }
+  ],
+  "expectedChartConfig": {
+    "series": [
+      {
+        "pointId": "SURGERYCHILLER-Capacity",
+        "label": "SURGERYCHILLER Capacity",
+        "apiParameter": "SURGERYCHILLER-Capacity",
+        "color": "#3B82F6"
+      },
+      {
+        "pointId": "AHU-01-ZoneTemp",
+        "label": "AHU-01 Zone Temp",
+        "apiParameter": "AHU-01-ZoneTemp",
+        "color": "#10B981"
+      }
+    ],
+    "note": "Chart labels use display_name for readability, API calls use Name for data fetching"
+  },
+  "timeseriesResponse": {
+    "SURGERYCHILLER-Capacity": {
+      "ts": [
+        {"timestamp": "2025-10-10T00:00:00Z", "value": 75.5},
+        {"timestamp": "2025-10-10T01:00:00Z", "value": 78.2},
+        {"timestamp": "2025-10-10T02:00:00Z", "value": 72.1},
+        {"timestamp": "2025-10-10T03:00:00Z", "value": 80.0}
+      ]
+    },
+    "AHU-01-ZoneTemp": {
+      "ts": [
+        {"timestamp": "2025-10-10T00:00:00Z", "value": 72.0},
+        {"timestamp": "2025-10-10T01:00:00Z", "value": 71.5},
+        {"timestamp": "2025-10-10T02:00:00Z", "value": 73.2},
+        {"timestamp": "2025-10-10T03:00:00Z", "value": 72.8}
+      ]
+    }
+  }
+}

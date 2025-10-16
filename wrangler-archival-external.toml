@@ -1,0 +1,54 @@
+# ============================================================================
+# TEMPLATE/EXAMPLE FILE - NOT USED FOR PRODUCTION
+# ============================================================================
+# For production deployments, use: wrangler-archival.toml
+# This file is kept as an example of external module configuration
+# See config/cloudflare-unified-config.toml for correct resource IDs
+# ============================================================================
+
+# Wrangler configuration for Archival Worker with external modules
+# Archives old D1 data to R2 as Parquet files daily
+
+name = "building-vitals-archival-template"
+main = "src/archival-worker.js"
+compatibility_date = "2024-09-23"
+compatibility_flags = ["nodejs_compat"]
+
+# Cron trigger - runs daily at 2 AM UTC
+[triggers]
+crons = ["0 2 * * *"]
+
+# D1 Database binding
+# NOTE: For production, see config/cloudflare-unified-config.toml
+[[d1_databases]]
+binding = "DB"
+database_name = "ace-iot-db"
+database_id = "1afc0a07-85cd-4d5f-a046-b580ffffb8dc"  # Production ID
+
+# R2 Bucket binding
+[[r2_buckets]]
+binding = "R2"
+bucket_name = "ace-timeseries"  # Production bucket
+
+# KV Namespace binding for logging
+[[kv_namespaces]]
+binding = "KV"
+id = "fa5e24f3f2ed4e3489a299e28f1bffaa"  # Production KV ID
+
+# Environment variables
+[vars]
+ARCHIVE_THRESHOLD_DAYS = "30"
+BATCH_SIZE = "10000"
+MAX_RETRIES = "3"
+
+# Limits
+[limits]
+cpu_ms = 30000
+
+# Rules for external modules (lzo is optional, GZIP compression will be used instead)
+[build]
+command = "npm install parquetjs"
+
+[build.upload]
+# Mark optional lzo module as external
+external = ["lzo"]

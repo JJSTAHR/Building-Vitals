@@ -1,0 +1,145 @@
+# ============================================================================
+# Wrangler Configuration - Backfill Worker
+# ============================================================================
+#
+# Historical timeseries data import worker
+# Processes 1 year of data in daily chunks, writes directly to R2
+#
+# Deployment:
+#   wrangler deploy --config workers/wrangler-backfill.toml
+#
+# Manual Trigger:
+#   POST https://building-vitals-backfill.jstahr.workers.dev/trigger
+#   (Automatically continues from last checkpoint)
+#
+# Check Status:
+#   GET https://building-vitals-backfill.jstahr.workers.dev/status
+
+name = "building-vitals-backfill"
+main = "../src/backfill-worker.js"
+compatibility_date = "2024-12-01"
+compatibility_flags = ["nodejs_compat"]
+
+# ============================================================================
+# Bindings
+# ============================================================================
+
+# R2 Bucket for Parquet files (cold storage)
+[[r2_buckets]]
+binding = "R2"
+bucket_name = "ace-timeseries"
+
+# D1 Database for hot storage (last 20 days backfill)
+[[d1_databases]]
+binding = "DB"
+database_name = "ace-iot-db"
+database_id = "1afc0a07-85cd-4d5f-a046-b580ffffb8dc"
+
+# KV Namespace for backfill progress tracking
+[[kv_namespaces]]
+binding = "BACKFILL_STATE"
+id = "fa5e24f3f2ed4e3489a299e28f1bffaa"
+
+# ============================================================================
+# Environment Variables
+# ============================================================================
+
+[vars]
+# ACE IoT API Configuration
+ACE_API_BASE = "https://flightdeck.aceiot.cloud/api"
+
+# Site Configuration
+SITE_NAME = "ses_falls_city"
+
+# Backfill Date Range
+BACKFILL_START_DATE = "2024-12-10"
+BACKFILL_END_DATE = "2025-10-12"
+
+# Continuation Configuration (pages per invocation)
+PAGES_PER_INVOCATION = "5"
+
+# Environment
+ENVIRONMENT = "production"
+
+# ============================================================================
+# Worker Limits
+# ============================================================================
+
+[limits]
+cpu_ms = 30000  # 30 seconds per invocation (handle large daily datasets)
+
+# ============================================================================
+# Secrets (Set via wrangler secret put)
+# ============================================================================
+# Required secrets:
+#   wrangler secret put ACE_API_KEY --config workers/wrangler-backfill.toml
+#
+# Secrets:
+#   - ACE_API_KEY: ACE IoT API authentication token (same as ETL worker)
+#
+# ============================================================================
+
+# ============================================================================
+# Environment-Specific Overrides
+# ============================================================================
+
+[env.development]
+name = "building-vitals-backfill-dev"
+
+[env.development.vars]
+SITE_NAME = "ses_falls_city"
+BACKFILL_START_DATE = "2024-12-10"
+BACKFILL_END_DATE = "2024-12-15"  # Shorter range for testing (5 days)
+PAGES_PER_INVOCATION = "2"  # Fewer pages for faster testing
+ENVIRONMENT = "development"
+
+[env.production]
+name = "building-vitals-backfill"
+
+[env.production.vars]
+SITE_NAME = "ses_falls_city"
+BACKFILL_START_DATE = "2024-12-10"
+BACKFILL_END_DATE = "2025-10-12"
+PAGES_PER_INVOCATION = "5"
+ACE_API_BASE = "https://flightdeck.aceiot.cloud/api"
+ENVIRONMENT = "production"
+
+[[env.production.r2_buckets]]
+binding = "R2"
+bucket_name = "ace-timeseries"
+
+[[env.production.d1_databases]]
+binding = "DB"
+database_name = "ace-iot-db"
+database_id = "1afc0a07-85cd-4d5f-a046-b580ffffb8dc"
+
+[[env.production.kv_namespaces]]
+binding = "BACKFILL_STATE"
+id = "fa5e24f3f2ed4e3489a299e28f1bffaa"
+
+# ============================================================================
+# Deployment Notes
+# ============================================================================
+#
+# 1. Create R2 Bucket:
+#    wrangler r2 bucket create ace-timeseries
+#
+# 2. Set Secrets:
+#    wrangler secret put ACE_API_KEY --config workers/wrangler-backfill.toml
+#
+# 3. Deploy:
+#    wrangler deploy --config workers/wrangler-backfill.toml --env production
+#
+# 4. Test Deployment:
+#    curl https://building-vitals-backfill.jstahr.workers.dev/health
+#
+# 5. Start Backfill (Manual Trigger):
+#    curl -X POST https://building-vitals-backfill.jstahr.workers.dev/trigger
+#
+# 6. Check Progress:
+#    curl https://building-vitals-backfill.jstahr.workers.dev/status
+#
+# 7. Monitor Logs:
+#    wrangler tail --config workers/wrangler-backfill.toml --env production
+#
+# ============================================================================

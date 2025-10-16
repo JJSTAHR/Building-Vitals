@@ -1,0 +1,99 @@
+========================================
+Building Vitals Debug Test
+========================================
+
+
+🌐 Step 1: Navigating to Building Vitals...
+🔍 BROWSER CONSOLE: [AceTokenResolver] Using environment ACE token
+
+🔐 Step 2: Looking for login form...
+   Entering credentials...
+   Clicking login button...
+
+⏳ Step 3: Waiting for dashboard to load...
+
+✅ Step 4: Logged in! Checking token...
+📡 API REQUEST: OPTIONS https://ace-iot-ai-proxy.jstahr.workers.dev/api/sites/ses_falls_city/timeseries/paginated?start_time=2025-10-12T14%3A49%3A00.844Z&end_time=2025-10-13T14%3A49%3A00.844Z&raw_data=true&page_size=100000
+📡 API REQUEST: GET https://ace-iot-ai-proxy.jstahr.workers.dev/api/sites/ses_falls_city/timeseries/paginated?start_time=2025-10-12T14%3A49%3A00.844Z&end_time=2025-10-13T14%3A49%3A00.844Z&raw_data=true&page_size=100000
+📨 API RESPONSE: 200 https://ace-iot-ai-proxy.jstahr.workers.dev/api/sites/ses_falls_city/timeseries/paginated?start_time=2025-10-12T14%3A49%3A00.844Z&end_time=2025-10-13T14%3A49%3A00.844Z&raw_data=true&page_size=100000
+   Content-Type: undefined
+🔑 Token status: { exists: true, length: 295, prefix: 'eyJhbGciOiJIUzI1NiIs' }
+
+📊 Step 6: Checking for charts on page...
+📄 Page state: {
+  hasCharts: true,
+  hasLoadingText: true,
+  hasNoDataText: false,
+  hasErrorText: false,
+  reduxState: 'not available'
+}
+
+📸 Screenshot saved to: C:\Users\jstahr\Desktop\Building Vitals\debug-screenshot.png
+
+========================================
+Test Summary:
+========================================
+API Requests Made: 2
+Page State: {
+  "hasCharts": true,
+  "hasLoadingText": true,
+  "hasNoDataText": false,
+  "hasErrorText": false,
+  "reduxState": "not available"
+}
+
+⏸️  Waiting for pagination to complete (checking every 10 seconds)...
+
+⏱️  After 10s: { hasLoadingText: true, hasNoDataText: false, hasErrorText: false }
+
+⏱️  After 20s: { hasLoadingText: true, hasNoDataText: false, hasErrorText: false }
+📨 API RESPONSE: 200 https://ace-iot-ai-proxy.jstahr.workers.dev/api/sites/ses_falls_city/timeseries/paginated?start_time=2025-10-12T14%3A49%3A00.844Z&end_time=2025-10-13T14%3A49%3A00.844Z&raw_data=true&page_size=100000
+   Content-Type: application/json
+📡 API REQUEST: GET https://ace-iot-ai-proxy.jstahr.workers.dev/api/sites/ses_falls_city/timeseries/paginated?start_time=2025-10-12T14%3A49%3A00.844Z&end_time=2025-10-13T14%3A49%3A00.844Z&raw_data=true&page_size=100000&cursor=eyJvZmZzZXQiOiAxNzUxLCAidGltZXN0YW1wIjogIjIwMjUtMTAtMTJUMTY6MzU6MzcuNjk0NDM0In0%3D
+📡 API REQUEST: OPTIONS https://ace-iot-ai-proxy.jstahr.workers.dev/api/sites/ses_falls_city/timeseries/paginated?start_time=2025-10-12T14%3A49%3A00.844Z&end_time=2025-10-13T14%3A49%3A00.844Z&raw_data=true&page_size=100000&cursor=eyJvZmZzZXQiOiAxNzUxLCAidGltZXN0YW1wIjogIjIwMjUtMTAtMTJUMTY6MzU6MzcuNjk0NDM0In0%3D
+📨 API RESPONSE: 200 https://ace-iot-ai-proxy.jstahr.workers.dev/api/sites/ses_falls_city/timeseries/paginated?start_time=2025-10-12T14%3A49%3A00.844Z&end_time=2025-10-13T14%3A49%3A00.844Z&raw_data=true&page_size=100000&cursor=eyJvZmZzZXQiOiAxNzUxLCAidGltZXN0YW1wIjogIjIwMjUtMTAtMTJUMTY6MzU6MzcuNjk0NDM0In0%3D
+   Content-Type: undefined
+   RESPONSE SIZE: 15607071 bytes
+   RESPONSE PREVIEW: {"point_samples":[{"name":"ses/ses_falls_city/192.168.96.3/n4/FallsCity_CMC/C.Drivers.LonNetwork1.AHUDampers.points.Exhaust_Damper","value":"-24.8571","time":"2025-10-12T14:50:36.055960"},{"name":"ses/ses_falls_city/192.168.96.3/n4/FallsCity_CMC/C.Drivers.LonNetwork1.AHUDampers.points.Outside_Damper ...
+
+⏱️  After 30s: { hasLoadingText: true, hasNoDataText: false, hasErrorText: false }
+📨 API RESPONSE: 200 https://ace-iot-ai-proxy.jstahr.workers.dev/api/sites/ses_falls_city/timeseries/paginated?start_time=2025-10-12T14%3A49%3A00.844Z&end_time=2025-10-13T14%3A49%3A00.844Z&raw_data=true&page_size=100000&cursor=eyJvZmZzZXQiOiAxNzUxLCAidGltZXN0YW1wIjogIjIwMjUtMTAtMTJUMTY6MzU6MzcuNjk0NDM0In0%3D
+   Content-Type: application/json
+📡 API REQUEST: GET https://ace-iot-ai-proxy.jstahr.workers.dev/api/sites/ses_falls_city/timeseries/paginated?start_time=2025-10-12T14%3A49%3A00.844Z&end_time=2025-10-13T14%3A49%3A00.844Z&raw_data=true&page_size=100000&cursor=eyJvZmZzZXQiOiAxMTA0LCAidGltZXN0YW1wIjogIjIwMjUtMTAtMTJUMTg6MjU6MzcuNjExMjI0In0%3D
+📡 API REQUEST: OPTIONS https://ace-iot-ai-proxy.jstahr.workers.dev/api/sites/ses_falls_city/timeseries/paginated?start_time=2025-10-12T14%3A49%3A00.844Z&end_time=2025-10-13T14%3A49%3A00.844Z&raw_data=true&page_size=100000&cursor=eyJvZmZzZXQiOiAxMTA0LCAidGltZXN0YW1wIjogIjIwMjUtMTAtMTJUMTg6MjU6MzcuNjExMjI0In0%3D
+📨 API RESPONSE: 200 https://ace-iot-ai-proxy.jstahr.workers.dev/api/sites/ses_falls_city/timeseries/paginated?start_time=2025-10-12T14%3A49%3A00.844Z&end_time=2025-10-13T14%3A49%3A00.844Z&raw_data=true&page_size=100000&cursor=eyJvZmZzZXQiOiAxMTA0LCAidGltZXN0YW1wIjogIjIwMjUtMTAtMTJUMTg6MjU6MzcuNjExMjI0In0%3D
+   Content-Type: undefined
+   RESPONSE SIZE: 15606772 bytes
+   RESPONSE PREVIEW: {"point_samples":[{"name":"ses/ses_falls_city/192.168.96.4/n4/FallsCity_CMC/C.Drivers.BacnetNetwork.Vav718.points.ActHeatSetpt","value":"71.0","time":"2025-10-12T16:35:37.694434"},{"name":"ses/ses_falls_city/192.168.96.4/n4/FallsCity_CMC/C.Drivers.BacnetNetwork.Vav718.points.Airflow","value":"330.0" ...
+
+⏱️  After 40s: { hasLoadingText: true, hasNoDataText: false, hasErrorText: false }
+📨 API RESPONSE: 200 https://ace-iot-ai-proxy.jstahr.workers.dev/api/sites/ses_falls_city/timeseries/paginated?start_time=2025-10-12T14%3A49%3A00.844Z&end_time=2025-10-13T14%3A49%3A00.844Z&raw_data=true&page_size=100000&cursor=eyJvZmZzZXQiOiAxMTA0LCAidGltZXN0YW1wIjogIjIwMjUtMTAtMTJUMTg6MjU6MzcuNjExMjI0In0%3D
+   Content-Type: application/json
+📡 API REQUEST: GET https://ace-iot-ai-proxy.jstahr.workers.dev/api/sites/ses_falls_city/timeseries/paginated?start_time=2025-10-12T14%3A49%3A00.844Z&end_time=2025-10-13T14%3A49%3A00.844Z&raw_data=true&page_size=100000&cursor=eyJvZmZzZXQiOiA0NTcsICJ0aW1lc3RhbXAiOiAiMjAyNS0xMC0xMlQyMDoxNTozNy44NTU0OTUifQ%3D%3D
+📡 API REQUEST: OPTIONS https://ace-iot-ai-proxy.jstahr.workers.dev/api/sites/ses_falls_city/timeseries/paginated?start_time=2025-10-12T14%3A49%3A00.844Z&end_time=2025-10-13T14%3A49%3A00.844Z&raw_data=true&page_size=100000&cursor=eyJvZmZzZXQiOiA0NTcsICJ0aW1lc3RhbXAiOiAiMjAyNS0xMC0xMlQyMDoxNTozNy44NTU0OTUifQ%3D%3D
+📨 API RESPONSE: 200 https://ace-iot-ai-proxy.jstahr.workers.dev/api/sites/ses_falls_city/timeseries/paginated?start_time=2025-10-12T14%3A49%3A00.844Z&end_time=2025-10-13T14%3A49%3A00.844Z&raw_data=true&page_size=100000&cursor=eyJvZmZzZXQiOiA0NTcsICJ0aW1lc3RhbXAiOiAiMjAyNS0xMC0xMlQyMDoxNTozNy44NTU0OTUifQ%3D%3D
+   Content-Type: undefined
+   RESPONSE SIZE: 15602106 bytes
+   RESPONSE PREVIEW: {"point_samples":[{"name":"ses/ses_falls_city/192.168.96.4/n4/FallsCity_CMC/C.Drivers.BacnetNetwork.Net8000.Vav814.points.RoomTemp.AlarmOffset","value":"7.0","time":"2025-10-12T18:25:37.611224"},{"name":"ses/ses_falls_city/192.168.96.4/n4/FallsCity_CMC/C.Drivers.BacnetNetwork.Net8000.Vav814.points.S ...
+📨 API RESPONSE: 200 https://ace-iot-ai-proxy.jstahr.workers.dev/api/sites/ses_falls_city/timeseries/paginated?start_time=2025-10-12T14%3A49%3A00.844Z&end_time=2025-10-13T14%3A49%3A00.844Z&raw_data=true&page_size=100000&cursor=eyJvZmZzZXQiOiA0NTcsICJ0aW1lc3RhbXAiOiAiMjAyNS0xMC0xMlQyMDoxNTozNy44NTU0OTUifQ%3D%3D
+   Content-Type: application/json
+📡 API REQUEST: GET https://ace-iot-ai-proxy.jstahr.workers.dev/api/sites/ses_falls_city/timeseries/paginated?start_time=2025-10-12T14%3A49%3A00.844Z&end_time=2025-10-13T14%3A49%3A00.844Z&raw_data=true&page_size=100000&cursor=eyJvZmZzZXQiOiAxOTY2LCAidGltZXN0YW1wIjogIjIwMjUtMTAtMTJUMjI6MDU6MzYuMDQxMzE1In0%3D
+📡 API REQUEST: OPTIONS https://ace-iot-ai-proxy.jstahr.workers.dev/api/sites/ses_falls_city/timeseries/paginated?start_time=2025-10-12T14%3A49%3A00.844Z&end_time=2025-10-13T14%3A49%3A00.844Z&raw_data=true&page_size=100000&cursor=eyJvZmZzZXQiOiAxOTY2LCAidGltZXN0YW1wIjogIjIwMjUtMTAtMTJUMjI6MDU6MzYuMDQxMzE1In0%3D
+📨 API RESPONSE: 200 https://ace-iot-ai-proxy.jstahr.workers.dev/api/sites/ses_falls_city/timeseries/paginated?start_time=2025-10-12T14%3A49%3A00.844Z&end_time=2025-10-13T14%3A49%3A00.844Z&raw_data=true&page_size=100000&cursor=eyJvZmZzZXQiOiAxOTY2LCAidGltZXN0YW1wIjogIjIwMjUtMTAtMTJUMjI6MDU6MzYuMDQxMzE1In0%3D
+   Content-Type: undefined
+   RESPONSE SIZE: 15605740 bytes
+   RESPONSE PREVIEW: {"point_samples":[{"name":"ses/ses_falls_city/192.168.96.4/n4/FallsCity_CMC/C.Drivers.BacnetNetwork.Net7000.Vav607.points.MinFlowSetpt","value":"1445.0","time":"2025-10-12T20:15:37.855495"},{"name":"ses/ses_falls_city/192.168.96.4/n4/FallsCity_CMC/C.Drivers.BacnetNetwork.Net7000.Vav607.points.OaTemp ...
+
+⏱️  After 50s: { hasLoadingText: true, hasNoDataText: false, hasErrorText: false }
+📨 API RESPONSE: 200 https://ace-iot-ai-proxy.jstahr.workers.dev/api/sites/ses_falls_city/timeseries/paginated?start_time=2025-10-12T14%3A49%3A00.844Z&end_time=2025-10-13T14%3A49%3A00.844Z&raw_data=true&page_size=100000&cursor=eyJvZmZzZXQiOiAxOTY2LCAidGltZXN0YW1wIjogIjIwMjUtMTAtMTJUMjI6MDU6MzYuMDQxMzE1In0%3D
+   Content-Type: application/json
+📡 API REQUEST: GET https://ace-iot-ai-proxy.jstahr.workers.dev/api/sites/ses_falls_city/timeseries/paginated?start_time=2025-10-12T14%3A49%3A00.844Z&end_time=2025-10-13T14%3A49%3A00.844Z&raw_data=true&page_size=100000&cursor=eyJvZmZzZXQiOiAxMzEwLCAidGltZXN0YW1wIjogIjIwMjUtMTAtMTJUMjM6NTU6MzUuOTk0MzEwIn0%3D
+📡 API REQUEST: OPTIONS https://ace-iot-ai-proxy.jstahr.workers.dev/api/sites/ses_falls_city/timeseries/paginated?start_time=2025-10-12T14%3A49%3A00.844Z&end_time=2025-10-13T14%3A49%3A00.844Z&raw_data=true&page_size=100000&cursor=eyJvZmZzZXQiOiAxMzEwLCAidGltZXN0YW1wIjogIjIwMjUtMTAtMTJUMjM6NTU6MzUuOTk0MzEwIn0%3D
+📨 API RESPONSE: 200 https://ace-iot-ai-proxy.jstahr.workers.dev/api/sites/ses_falls_city/timeseries/paginated?start_time=2025-10-12T14%3A49%3A00.844Z&end_time=2025-10-13T14%3A49%3A00.844Z&raw_data=true&page_size=100000&cursor=eyJvZmZzZXQiOiAxMzEwLCAidGltZXN0YW1wIjogIjIwMjUtMTAtMTJUMjM6NTU6MzUuOTk0MzEwIn0%3D
+   Content-Type: undefined
+   RESPONSE SIZE: 15617188 bytes
+   RESPONSE PREVIEW: {"point_samples":[{"name":"ses/ses_falls_city/192.168.96.3/n4/FallsCity_CMC/S.FallsCity_CMC.Vav408.DamperTime","value":"90.0","time":"2025-10-12T22:05:36.041315"},{"name":"ses/ses_falls_city/192.168.96.3/n4/FallsCity_CMC/S.FallsCity_CMC.Vav408.HeatOffset","value":"1.0","time":"2025-10-12T22:05:36.04 ...
+
+⏱️  After 60s: { hasLoadingText: true, hasNoDataText: false, hasErrorText: false }
+
+✅ Test complete!
