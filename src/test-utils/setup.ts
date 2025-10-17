@@ -92,3 +92,25 @@ global.TextDecoder = class TextDecoder {
     return String.fromCharCode(...arr);
   }
 } as any;
+
+// Mock IndexedDB for tests
+if (typeof global.indexedDB === 'undefined') {
+  Object.defineProperty(global, 'indexedDB', {
+    value: {
+      open: vi.fn().mockReturnValue({
+        result: null,
+        onsuccess: null,
+        onerror: null,
+        onupgradeneeded: null,
+      }),
+      deleteDatabase: vi.fn().mockReturnValue({
+        onsuccess: null,
+        onerror: null,
+      }),
+      cmp: vi.fn(),
+      databases: vi.fn().mockResolvedValue([]),
+    },
+    writable: true,
+    configurable: true,
+  });
+}

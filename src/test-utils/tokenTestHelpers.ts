@@ -242,22 +242,26 @@ export function setupTestEnvironment() {
 
   global.localStorage = mockLocalStorage as any;
 
-  // Mock Web Crypto API
-  global.crypto = {
-    subtle: {
-      encrypt: vi.fn().mockResolvedValue(new ArrayBuffer(32)),
-      decrypt: vi.fn().mockResolvedValue(new ArrayBuffer(32)),
-      digest: vi.fn().mockResolvedValue(new ArrayBuffer(32)),
-      generateKey: vi.fn(),
-      deriveKey: vi.fn(),
+  // Mock Web Crypto API - use Object.defineProperty to avoid read-only error
+  Object.defineProperty(global, 'crypto', {
+    value: {
+      subtle: {
+        encrypt: vi.fn().mockResolvedValue(new ArrayBuffer(32)),
+        decrypt: vi.fn().mockResolvedValue(new ArrayBuffer(32)),
+        digest: vi.fn().mockResolvedValue(new ArrayBuffer(32)),
+        generateKey: vi.fn(),
+        deriveKey: vi.fn(),
+      },
+      getRandomValues: (array: any) => {
+        for (let i = 0; i < array.length; i++) {
+          array[i] = Math.floor(Math.random() * 256);
+        }
+        return array;
+      },
     },
-    getRandomValues: (array: any) => {
-      for (let i = 0; i < array.length; i++) {
-        array[i] = Math.floor(Math.random() * 256);
-      }
-      return array;
-    },
-  } as any;
+    writable: true,
+    configurable: true,
+  });
 
   // Mock navigator.storage
   global.navigator = {
