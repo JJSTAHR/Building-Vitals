@@ -43,6 +43,19 @@ import math
 
 ACE_BASE_DEFAULT = os.environ.get("ACE_API_BASE", "https://flightdeck.aceiot.cloud/api")
 
+def _ace_supports_point_names(ace_base: str) -> bool:
+    """Return True if the ACE base is known to support point_names filtering.
+    Vendor flightdeck base typically does not; proxy/custom bases may.
+    """
+    try:
+        base = (ace_base or "").lower()
+        if "flightdeck.aceiot.cloud/api" in base:
+            return False
+        # Assume non-vendor bases (e.g., custom proxy) support point_names
+        return True
+    except Exception:
+        return False
+
 
 def parse_iso(s: str) -> datetime:
     return datetime.fromisoformat(s.replace("Z", "+00:00")).astimezone(timezone.utc)
@@ -120,7 +133,7 @@ def fetch_paginated_window(
         }
         if cursor:
             params["cursor"] = cursor
-        if point_names:
+        if point_names and _ace_supports_point_names(ace_base):
             # Pass a reduced set of names to keep payload sizes small
             params["point_names"] = ",".join(point_names)
 
