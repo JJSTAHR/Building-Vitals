@@ -28,7 +28,7 @@ import os
 import sys
 import time
 from datetime import datetime, timedelta, timezone
-from typing import Dict, List, Tuple
+from typing import Dict, List, Tuple, Optional
 
 import requests
 import math
@@ -82,6 +82,7 @@ def fetch_paginated_window(
     page_size: int = 100000,
     timeout_sec: int = 180,
     ace_base: str = ACE_BASE_DEFAULT,
+    point_names: Optional[List[str]] = None,
 ) -> List[Dict]:
     """Fetch RAW samples for a site/time window using ACE paginated endpoint (raw_data=true)."""
     out: List[Dict] = []
@@ -117,6 +118,9 @@ def fetch_paginated_window(
         }
         if cursor:
             params["cursor"] = cursor
+        if point_names:
+            # Pass a reduced set of names to keep payload sizes small
+            params["point_names"] = ",".join(point_names)
 
         # Remaining time budget guard
         elapsed = time.time() - started
@@ -179,6 +183,22 @@ def fetch_paginated_window(
             break
 
     return out
+
+
+def get_point_names_from_supabase(client: Client, site: str, limit: int = 100000) -> List[str]:
+    names: List[str] = []
+    try:
+        # Fetch up to limit names from points table for this site
+        res = client.table("points").select("name").eq("site_name", site).execute()
+        for r in (res.data or []):
+            n = str(r.get("name") or "").strip()
+            if n:
+                names.append(n)
+    except Exception:
+        return []
+    # De-duplicate, capped by limit
+    out = list(dict.fromkeys(names))
+    return out[:limit]
 
 
 def upsert_points(client: Client, site: str, names: List[str]) -> Dict[str, int]:
@@ -281,15 +301,29 @@ def run_backfill(
         e_iso = iso(window_end)
         print(f"[Backfill] {site} {s_iso} -> {e_iso}")
 
-        samples = fetch_paginated_window(
-            site, s_iso, e_iso, ace_token, page_size=page_size
-        )
-        if samples:
-            ins = upsert_timeseries(client, site, samples)
-            inserted += ins
-            print(f"  - fetched={len(samples)} inserted={ins}")
+        # Prefer point-chunked fetch to keep payload sizes small
+        point_names = get_point_names_from_supabase(client, site)
+        total_window_samples = 0
+        if point_names:
+            for pn_chunk in chunk(point_names, 300):
+                samples = fetch_paginated_window(
+                    site, s_iso, e_iso, ace_token, page_size=page_size, point_names=list(pn_chunk)
+                )
+                if samples:
+                    ins = upsert_timeseries(client, site, samples)
+                    inserted += ins
+                    total_window_samples += len(samples)
         else:
-            print("  - no samples")
+            # Fallback to site-wide fetch if no names cached in Supabase
+            samples = fetch_paginated_window(
+                site, s_iso, e_iso, ace_token, page_size=page_size
+            )
+            if samples:
+                ins = upsert_timeseries(client, site, samples)
+                inserted += ins
+                total_window_samples = len(samples)
+
+        print(f"  - fetched={total_window_samples} inserted={inserted}")
 
         processed += 1
         window_end = window_start
