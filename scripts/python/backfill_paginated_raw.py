@@ -31,6 +31,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Tuple
 
 import requests
+import math
 from supabase import create_client, Client
 
 ACE_BASE_DEFAULT = os.environ.get("ACE_API_BASE", "https://flightdeck.aceiot.cloud/api")
@@ -114,10 +115,16 @@ def fetch_paginated_window(
             except Exception:
                 continue
             try:
-                val = float(r.get("value"))
+                val_raw = r.get("value")
+                # Reject explicit string NaN/Inf first
+                if isinstance(val_raw, str) and val_raw.strip().lower() in ("nan", "+inf", "-inf", "inf", "infinity"):
+                    continue
+                val = float(val_raw)
+                if not math.isfinite(val):
+                    continue
             except Exception:
                 continue
-            if name is None:
+            if not name:
                 continue
             out.append({"point_name": name, "timestamp": ts, "value": val})
 
