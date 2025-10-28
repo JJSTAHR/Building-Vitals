@@ -132,13 +132,13 @@ jobs:
         run: |
           # Tail-fill last 120 minutes up to now for freshness
           NOW_ISO=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-          TAIL_START=$(date -u -d "$NOW_ISO - 120 minutes" +"%Y-%m-%dT%H:%M:%SZ")
+          TAIL_START=$(date -u -d "$NOW_ISO - 180 minutes" +"%Y-%m-%dT%H:%M:%SZ")
           python scripts/python/backfill_paginated_raw.py \
             --site "${{ matrix.site }}" \
             --start "$TAIL_START" \
             --end "$NOW_ISO" \
-            --chunk-minutes "${{ github.event.inputs.chunk_minutes || '5' }}" \
-            --page-size "${{ github.event.inputs.page_size || '20000' }}" \
+            --chunk-minutes "${{ github.event.inputs.chunk_minutes || '10' }}" \
+            --page-size "${{ github.event.inputs.page_size || '10000' }}" \
             --max-chunks "${{ github.event.inputs.max_chunks || '12' }}"
 
       - name: Deep RAW backfill to Jan 1 (per site)
@@ -153,3 +153,28 @@ jobs:
             --chunk-minutes "${{ github.event.inputs.chunk_minutes || '10' }}" \
             --page-size "${{ github.event.inputs.page_size || '100000' }}" \
             --max-chunks "${{ github.event.inputs.max_chunks || '60' }}"
+      - name: ACE sanity probe (last 10 minutes)
+        env:
+          ACE_API_KEY: ${{ secrets.ACE_API_KEY }}
+          ACE_API_BASE: https://flightdeck.aceiot.cloud/api
+        shell: bash
+        run: |
+          set -euo pipefail
+          NOW=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+          START=$(date -u -d "$NOW - 10 minutes" +"%Y-%m-%dT%H:%M:%SZ")
+          url="$ACE_API_BASE/sites/${{ matrix.site }}/timeseries/paginated?start_time=$START&end_time=$NOW&raw_data=true&page_size=10000"
+          echo "GET $url" >&2
+          resp=$(curl -sS "$url" -H "authorization: Bearer $ACE_API_KEY" -H 'accept: application/json') || true
+          echo "${resp:0:512}..." | sed 's/\n/ /g'
+          echo "$resp" | jq -r '(.point_samples|length) as $n | "ace_sanity_point_samples=",$n' || true
+
+      - name: Configured points sanity probe
+        env:
+          ACE_API_KEY: ${{ secrets.ACE_API_KEY }}
+          ACE_API_BASE: https://flightdeck.aceiot.cloud/api
+        shell: bash
+        run: |
+          set -euo pipefail
+          url="$ACE_API_BASE/sites/${{ matrix.site }}/configured_points?page=1&per_page=100"
+          code=$(curl -s -o /dev/null -w "%{http_code}" "$url" -H "authorization: Bearer $ACE_API_KEY" -H 'accept: application/json')
+          echo "configured_points_http_code=$code"
