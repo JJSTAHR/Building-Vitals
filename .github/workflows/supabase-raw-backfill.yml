@@ -93,6 +93,7 @@ jobs:
       SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
       SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
       ACE_API_KEY: ${{ secrets.ACE_API_KEY }}
+      PROXY_URL: https://ace-iot-timeseries-prod.jstahr.workers.dev
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -116,6 +117,16 @@ jobs:
           if [ -z "$START_ISO" ]; then START_ISO="2025-01-01T00:00:00Z"; fi
           echo "start_iso=$START_ISO" >> $GITHUB_OUTPUT
 
+      - name: Near-now RAW tail-fill (Worker fallback)
+        run: |
+          NOW_ISO=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+          TAIL_START=$(date -u -d "$NOW_ISO - 120 minutes" +"%Y-%m-%dT%H:%M:%SZ")
+          body=$(jq -nc --arg s "${{ matrix.site }}" --arg a "$TAIL_START" --arg b "$NOW_ISO" '{siteName:$s, start_time:$a, end_time:$b, chunk_minutes:5, max_chunks:12}')
+          curl -sS -X POST "$PROXY_URL/api/admin/supa-backfill" \
+            -H "Content-Type: application/json" \
+            -H "Authorization: Bearer $ACE_API_KEY" \
+            --data "$body" || true
+
       - name: Near-now RAW tail-fill (per site)
         run: |
           # Tail-fill last 120 minutes up to now for freshness
@@ -125,9 +136,9 @@ jobs:
             --site "${{ matrix.site }}" \
             --start "$TAIL_START" \
             --end "$NOW_ISO" \
-            --chunk-minutes "${{ github.event.inputs.chunk_minutes || '10' }}" \
-            --page-size "${{ github.event.inputs.page_size || '100000' }}" \
-            --max-chunks "${{ github.event.inputs.max_chunks || '60' }}"
+            --chunk-minutes "${{ github.event.inputs.chunk_minutes || '5' }}" \
+            --page-size "${{ github.event.inputs.page_size || '20000' }}" \
+            --max-chunks "${{ github.event.inputs.max_chunks || '12' }}"
 
       - name: Deep RAW backfill to Jan 1 (per site)
         if: ${{ github.event_name != 'schedule' }}
