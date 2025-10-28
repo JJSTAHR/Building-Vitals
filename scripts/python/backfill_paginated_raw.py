@@ -33,6 +33,7 @@ from typing import Dict, List, Tuple
 import requests
 import math
 from supabase import create_client, Client
+import math
 
 ACE_BASE_DEFAULT = os.environ.get("ACE_API_BASE", "https://flightdeck.aceiot.cloud/api")
 
@@ -175,7 +176,13 @@ def upsert_timeseries(client: Client, site: str, samples: List[Dict]) -> int:
     for s in samples:
         pid = map_ids.get(s["point_name"])  # type: ignore
         ts_ms = int(s["timestamp"])  # milliseconds
-        val = float(s["value"])  # double precision
+        # Double-guard: filter non-finite values here as well (NaN/Inf)
+        try:
+            val = float(s["value"])  # double precision
+        except Exception:
+            continue
+        if not math.isfinite(val):
+            continue
         if pid is None:
             continue
         # Convert ms -> ISO timestamptz
