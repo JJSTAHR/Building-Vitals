@@ -52,11 +52,10 @@ jobs:
             exit 1
           fi
           base="${SUPABASE_URL%/}"
-          # Light HEAD-equivalent via limit=1; should return 200
+          # Light HEAD-equivalent via limit=1; should return 200 (apikey is sufficient)
           code=$(curl -s -o /dev/null -w "%{http_code}" \
             "${base}/rest/v1/points?select=name&limit=1" \
-            -H "apikey: ${SUPABASE_SERVICE_ROLE_KEY}" \
-            -H "Authorization: Bearer ${SUPABASE_SERVICE_ROLE_KEY}")
+            -H "apikey: ${SUPABASE_SERVICE_ROLE_KEY}")
           if [ "$code" != "200" ]; then
             echo "Supabase REST check failed: HTTP $code" >&2
             exit 1
