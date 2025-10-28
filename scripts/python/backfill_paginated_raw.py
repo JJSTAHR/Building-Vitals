@@ -34,6 +34,8 @@ import requests
 import math
 import json
 import random
+import shlex
+import subprocess
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 from supabase import create_client, Client
@@ -201,6 +203,81 @@ def get_point_names_from_supabase(client: Client, site: str, limit: int = 100000
     return out[:limit]
 
 
+def fetch_window_via_cli(
+    site: str,
+    start_iso: str,
+    end_iso: str,
+    ace_token: str,
+    page_size: int,
+    point_names: Optional[List[str]] = None,
+    timeout_sec: int = 120,
+) -> List[Dict]:
+    """Use aceiot-models-cli to fetch a window; returns list of {point_name,timestamp,value}.
+    Falls back to empty list on error; caller may retry with smaller params.
+    """
+    base_cmd = os.environ.get("ACE_CLI_CMD", "aceiot-models")
+    args = [
+        base_cmd,
+        "timeseries",
+        "--site", site,
+        "--start", start_iso,
+        "--end", end_iso,
+        "--raw-data",
+        "--page-size", str(page_size),
+        "--format", "json",
+    ]
+    if point_names:
+        args += ["--point-names", ",".join(point_names)]
+    env = dict(os.environ)
+    # Many CLIs read token from env; provide explicitly
+    env["ACE_API_KEY"] = ace_token
+    try:
+        p = subprocess.run(args, capture_output=True, text=True, timeout=timeout_sec, env=env)
+        if p.returncode != 0:
+            return []
+        text = p.stdout.strip()
+        data: List[Dict] = []
+        try:
+            obj = json.loads(text)
+            # Accept either {point_samples:[..]} or list
+            rows = obj.get("point_samples") if isinstance(obj, dict) else obj
+            if isinstance(rows, list):
+                for s in rows:
+                    n = s.get("name") or s.get("point") or s.get("point_name")
+                    t = s.get("time") or s.get("timestamp") or s.get("ts")
+                    v = s.get("value")
+                    try:
+                        ts = int(t) if isinstance(t, int) else int(datetime.fromisoformat(str(t).replace("Z","+00:00")).timestamp() * 1000)
+                    except Exception:
+                        continue
+                    try:
+                        val = float(v)
+                    except Exception:
+                        continue
+                    if n and math.isfinite(val):
+                        data.append({"point_name": n, "timestamp": ts, "value": val})
+        except json.JSONDecodeError:
+            # Try NDJSON fallback
+            for line in text.splitlines():
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    s = json.loads(line)
+                    n = s.get("name") or s.get("point") or s.get("point_name")
+                    t = s.get("time") or s.get("timestamp") or s.get("ts")
+                    v = s.get("value")
+                    ts = int(t) if isinstance(t, int) else int(datetime.fromisoformat(str(t).replace("Z","+00:00")).timestamp() * 1000)
+                    val = float(v)
+                    if n and math.isfinite(val):
+                        data.append({"point_name": n, "timestamp": ts, "value": val})
+                except Exception:
+                    continue
+        return data
+    except Exception:
+        return []
+
+
 def upsert_points(client: Client, site: str, names: List[str]) -> Dict[str, int]:
     names = sorted(set([n for n in names if n]))
     if not names:
@@ -306,9 +383,16 @@ def run_backfill(
         total_window_samples = 0
         if point_names:
             for pn_chunk in chunk(point_names, 300):
-                samples = fetch_paginated_window(
-                    site, s_iso, e_iso, ace_token, page_size=page_size, point_names=list(pn_chunk)
-                )
+                use_cli = os.environ.get("USE_ACE_CLI", "0") == "1"
+                if use_cli:
+                    samples = fetch_window_via_cli(site, s_iso, e_iso, ace_token, page_size, list(pn_chunk))
+                    # Retry with smaller pages if nothing returned
+                    if not samples:
+                        samples = fetch_window_via_cli(site, s_iso, e_iso, ace_token, max(5000, int(page_size*0.6)), list(pn_chunk))
+                else:
+                    samples = fetch_paginated_window(
+                        site, s_iso, e_iso, ace_token, page_size=page_size, point_names=list(pn_chunk)
+                    )
                 if samples:
                     ins = upsert_timeseries(client, site, samples)
                     inserted += ins
