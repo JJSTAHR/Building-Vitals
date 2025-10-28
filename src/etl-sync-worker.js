@@ -32,7 +32,7 @@ import * as Supa from './lib/supabase-store.js';
 
 const CONFIG = {
   // ACE API Configuration (will be overridden by env.ACE_API_BASE)
-  ACE_TIMEOUT_MS: 30000,
+  ACE_TIMEOUT_MS: 180000,
 
   // Sync Configuration
   SYNC_INTERVAL_MINUTES: 5,
@@ -797,7 +797,7 @@ async function fetchAllTimeseries(env, siteName, startTime, endTime, result, poi
     const url = new URL(`${apiBase}/sites/${siteName}/timeseries/paginated`);
     url.searchParams.set('start_time', startISO);
     url.searchParams.set('end_time', endISO);
-    url.searchParams.set('page_size', '10000'); // ACE limit: use 10k per page
+    url.searchParams.set('page_size', '100000'); // Larger pages for high-point sites
     url.searchParams.set('raw_data', 'true'); // RAW MODE: Get actual sensor readings per user requirement
 
     if (pnChunk && pnChunk.length > 0) {

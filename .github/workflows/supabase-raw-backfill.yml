@@ -2,7 +2,7 @@ name: Supabase RAW Backfill (Paginated)
 
 on:
   schedule:
-    - cron: '*/2 * * * *'  # every 2 minutes tail-fill (all sites)
+    - cron: '* * * * *'  # every minute tail-fill + deep backfill (all sites)
   workflow_dispatch:
     inputs:
       site:
@@ -21,7 +21,7 @@ on:
       page_size:
         description: "ACE paginated page size"
         required: true
-        default: "100000"
+        default: "500000"
       max_chunks:
         description: "Max chunks to process this run"
         required: true
@@ -105,7 +105,7 @@ jobs:
             --start "$TAIL_START" \
             --end "$NOW_ISO" \
             --chunk-minutes "${{ github.event.inputs.chunk_minutes || '10' }}" \
-            --page-size "${{ github.event.inputs.page_size || '100000' }}" \
+            --page-size "${{ github.event.inputs.page_size || '500000' }}" \
             --max-chunks "${{ github.event.inputs.max_chunks || '120' }}"
 
       - name: Deep RAW backfill to Jan 1 (per site)
@@ -121,5 +121,5 @@ jobs:
             --start "${{ steps.when.outputs.start_iso }}" \
             $END_ARG \
             --chunk-minutes "${{ github.event.inputs.chunk_minutes || '10' }}" \
-            --page-size "${{ github.event.inputs.page_size || '100000' }}" \
+            --page-size "${{ github.event.inputs.page_size || '500000' }}" \
             --max-chunks "${{ github.event.inputs.max_chunks || '120' }}"

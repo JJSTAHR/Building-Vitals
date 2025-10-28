@@ -1,0 +1,108 @@
+#:schema node_modules/wrangler/config-schema.json
+name = "ace-iot-etl-sync"
+main = "src/etl-sync-worker.js"
+compatibility_date = "2024-12-01"
+compatibility_flags = ["nodejs_compat"]
+
+# Scheduled ETL every 1 minute (bounded/no-op when fresh)
+[triggers]
+crons = ["* * * * *"]
+
+# KV for ETL state (create and replace IDs)
+[[kv_namespaces]]
+binding = "ETL_STATE"
+id = "2aa76a875ca847e1ba38dc033c2f54ab"
+preview_id = "685f18d960a04a4a8892254e72458341"
+
+[vars]
+# Primary site(s) to sync (comma-separated supported)
+SITE_NAME = "ses_falls_city"
+LOG_LEVEL = "info"
+ACE_API_BASE = "https://flightdeck.aceiot.cloud/api"
+HOT_STORE = "SUPABASE"
+
+[env.production]
+name = "ace-iot-etl-sync-prod"
+
+[env.production.vars]
+HOT_STORE = "SUPABASE"
+SUPA_BACKFILL_CHUNK_MIN = "20"
+SUPA_BACKFILL_MAX_CHUNKS = "120"
+SITE_NAME = "ses_falls_city"
+LOG_LEVEL = "info"
+ACE_API_BASE = "https://flightdeck.aceiot.cloud/api"
+MAX_SITES_PER_TICK = "10"
+SITES_REFRESH_MINUTES = "10"
+SHARD_OF = "1"
+SHARD_MOD = "0"
+
+[[env.production.kv_namespaces]]
+binding = "ETL_STATE"
+id = "2aa76a875ca847e1ba38dc033c2f54ab"
+preview_id = "685f18d960a04a4a8892254e72458341"
+
+# Shard 1 of 4 (mod 1)
+[env.shard1]
+name = "ace-iot-etl-sync-prod-1"
+
+[env.shard1.vars]
+HOT_STORE = "SUPABASE"
+SUPA_BACKFILL_CHUNK_MIN = "20"
+SUPA_BACKFILL_MAX_CHUNKS = "120"
+SITE_NAME = "ses_falls_city"
+LOG_LEVEL = "info"
+ACE_API_BASE = "https://flightdeck.aceiot.cloud/api"
+MAX_SITES_PER_TICK = "10"
+SITES_REFRESH_MINUTES = "10"
+SHARD_OF = "4"
+SHARD_MOD = "1"
+
+[[env.shard1.kv_namespaces]]
+binding = "ETL_STATE"
+id = "2aa76a875ca847e1ba38dc033c2f54ab"
+preview_id = "685f18d960a04a4a8892254e72458341"
+
+# Shard 2 of 4 (mod 2)
+[env.shard2]
+name = "ace-iot-etl-sync-prod-2"
+
+[env.shard2.vars]
+HOT_STORE = "SUPABASE"
+SUPA_BACKFILL_CHUNK_MIN = "20"
+SUPA_BACKFILL_MAX_CHUNKS = "120"
+SITE_NAME = "ses_falls_city"
+LOG_LEVEL = "info"
+ACE_API_BASE = "https://flightdeck.aceiot.cloud/api"
+MAX_SITES_PER_TICK = "10"
+SITES_REFRESH_MINUTES = "10"
+SHARD_OF = "4"
+SHARD_MOD = "2"
+
+[[env.shard2.kv_namespaces]]
+binding = "ETL_STATE"
+id = "2aa76a875ca847e1ba38dc033c2f54ab"
+preview_id = "685f18d960a04a4a8892254e72458341"
+
+# Shard 3 of 4 (mod 3)
+[env.shard3]
+name = "ace-iot-etl-sync-prod-3"
+
+[env.shard3.vars]
+HOT_STORE = "SUPABASE"
+SUPA_BACKFILL_CHUNK_MIN = "20"
+SUPA_BACKFILL_MAX_CHUNKS = "120"
+SITE_NAME = "ses_falls_city"
+LOG_LEVEL = "info"
+ACE_API_BASE = "https://flightdeck.aceiot.cloud/api"
+MAX_SITES_PER_TICK = "10"
+SITES_REFRESH_MINUTES = "10"
+SHARD_OF = "4"
+SHARD_MOD = "3"
+
+[[env.shard3.kv_namespaces]]
+binding = "ETL_STATE"
+id = "2aa76a875ca847e1ba38dc033c2f54ab"
+preview_id = "685f18d960a04a4a8892254e72458341"
+
+# Secrets to set (run):
+#   wrangler secret put ACE_API_KEY -c wrangler-etl.toml
