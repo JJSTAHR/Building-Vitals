@@ -47,7 +47,7 @@ const CONFIG = {
   BATCH_SIZE: 1000, // D1 batch limit
 
   // Pagination Configuration
-  PAGE_SIZE: 100000, // Large page size for site-wide fetching
+  PAGE_SIZE: 50000, // Safer default to reduce large payload issues
 
   // Retry Configuration
   MAX_API_RETRIES: 3,
