@@ -40,6 +40,27 @@ jobs:
     outputs:
       sites: ${{ steps.sites.outputs.sites }}
     steps:
+      - name: Connectivity check (Supabase REST)
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -z "${SUPABASE_URL:-}" ] || [ -z "${SUPABASE_SERVICE_ROLE_KEY:-}" ]; then
+            echo "Supabase secrets are missing" >&2
+            exit 1
+          fi
+          base="${SUPABASE_URL%/}"
+          # Light HEAD-equivalent via limit=1; should return 200
+          code=$(curl -s -o /dev/null -w "%{http_code}" \
+            "${base}/rest/v1/points?select=name&limit=1" \
+            -H "apikey: ${SUPABASE_SERVICE_ROLE_KEY}" \
+            -H "Authorization: Bearer ${SUPABASE_SERVICE_ROLE_KEY}")
+          if [ "$code" != "200" ]; then
+            echo "Supabase REST check failed: HTTP $code" >&2
+            exit 1
+          fi
       - name: Determine site list (single or all)
         id: sites
         env:
@@ -48,7 +69,8 @@ jobs:
           INPUT_SITE: ${{ github.event.inputs.site }}
         shell: bash
         run: |
-          if [ -n "$INPUT_SITE" ]; then
+          set -euo pipefail
+          if [ -n "${INPUT_SITE:-}" ]; then
             echo "sites=[\"$INPUT_SITE\"]" >> $GITHUB_OUTPUT
             exit 0
           fi
@@ -68,6 +90,10 @@ jobs:
       matrix:
         site: ${{ fromJSON(needs.discover.outputs.sites) }}
     timeout-minutes: 55
+    env:
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+      ACE_API_KEY: ${{ secrets.ACE_API_KEY }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -92,10 +118,6 @@ jobs:
           echo "start_iso=$START_ISO" >> $GITHUB_OUTPUT
 
       - name: Near-now RAW tail-fill (per site)
-        env:
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-          ACE_API_KEY: ${{ secrets.ACE_API_KEY }}
         run: |
           # Tail-fill last 120 minutes up to now for freshness
           NOW_ISO=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
@@ -109,10 +131,6 @@ jobs:
             --max-chunks "${{ github.event.inputs.max_chunks || '120' }}"
 
       - name: Deep RAW backfill to Jan 1 (per site)
-        env:
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-          ACE_API_KEY: ${{ secrets.ACE_API_KEY }}
         run: |
           END_ARG=""
           if [ -n "${{ github.event.inputs.end_iso }}" ]; then END_ARG="--end \"${{ github.event.inputs.end_iso }}\""; fi
