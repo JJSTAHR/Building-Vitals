@@ -25,7 +25,7 @@ on:
       max_chunks:
         description: "Max chunks to process this run"
         required: true
-        default: "60"
+        default: "12"
 
 concurrency:
   group: supabase-raw-backfill
@@ -130,6 +130,7 @@ jobs:
             --max-chunks "${{ github.event.inputs.max_chunks || '60' }}"
 
       - name: Deep RAW backfill to Jan 1 (per site)
+        if: ${{ github.event_name != 'schedule' }}
         run: |
           END_ARG=""
           if [ -n "${{ github.event.inputs.end_iso }}" ]; then END_ARG="--end \"${{ github.event.inputs.end_iso }}\""; fi
