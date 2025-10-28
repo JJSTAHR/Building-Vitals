@@ -32,6 +32,10 @@ from typing import Dict, List, Tuple
 
 import requests
 import math
+import json
+import random
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 from supabase import create_client, Client
 import math
 
@@ -84,7 +88,21 @@ def fetch_paginated_window(
     cursor = None
     started = time.time()
     pages = 0
-    headers = {"authorization": f"Bearer {ace_token}", "accept": "application/json"}
+    session = requests.Session()
+    retry = Retry(total=5, connect=3, read=3, backoff_factor=0.5,
+                  status_forcelist=(429, 500, 502, 503, 504, 520, 521, 522, 523),
+                  allowed_methods=frozenset(["GET"]),
+                  respect_retry_after_header=True)
+    adapter = HTTPAdapter(max_retries=retry, pool_maxsize=4)
+    session.mount("https://", adapter)
+    session.mount("http://", adapter)
+    session.headers.update({
+        "authorization": f"Bearer {ace_token}",
+        "accept": "application/json",
+        "accept-encoding": "identity",
+        "connection": "keep-alive",
+        "user-agent": "bv-backfill/1.0"
+    })
 
     # Cap page size conservatively to reduce chunked transfer failures
     effective_page_size = max(10000, min(int(page_size), 50000))
@@ -106,35 +124,33 @@ def fetch_paginated_window(
         if time_left <= 2:
             break
 
-        # Robust fetch with simple retries for chunked encoding/timeouts
+        # Robust fetch+parse with retries; downsize page + backoff on failures
         last_err = None
-        for attempt in range(3):
+        data = {}
+        for attempt in range(4):
             try:
-                resp = requests.get(url, headers=headers, params=params, timeout=time_left)
+                resp = session.get(url, params=params, timeout=time_left, stream=True)
+                if not resp.ok:
+                    raise RuntimeError(f"ACE {resp.status_code}: {resp.text[:200]}")
+                buf = bytearray()
+                for chunk in resp.iter_content(chunk_size=65536):
+                    if chunk:
+                        buf.extend(chunk)
+                text = buf.decode(resp.encoding or 'utf-8', errors='replace')
+                data = json.loads(text) if text else {}
                 break
-            except requests.exceptions.ChunkedEncodingError as e:
+            except (requests.exceptions.ChunkedEncodingError,
+                    requests.exceptions.ContentDecodingError,
+                    requests.exceptions.RequestException,
+                    json.JSONDecodeError) as e:
                 last_err = e
-                # On first failure, reduce page size further and retry
-                if effective_page_size > 20000:
-                    effective_page_size = max(10000, effective_page_size // 2)
+                if effective_page_size > 10000:
+                    effective_page_size = max(10000, int(effective_page_size * 0.6))
                     params["page_size"] = str(effective_page_size)
-                continue
-            except requests.exceptions.RequestException as e:
-                last_err = e
+                time.sleep(0.5 * (attempt + 1) + random.uniform(0, 0.2))
                 continue
         else:
-            # Exhausted retries
             raise last_err
-        try:
-            if not resp.ok:
-                raise RuntimeError(f"ACE {resp.status_code}: {resp.text[:200]}")
-            data = resp.json() if resp.content else {}
-        except (requests.exceptions.ChunkedEncodingError, requests.exceptions.ContentDecodingError, ValueError, requests.exceptions.RequestException) as e:
-            # If parsing failed mid-stream, reduce page size and retry this page in next loop
-            if effective_page_size > 20000:
-                effective_page_size = max(10000, effective_page_size // 2)
-            # Try the same cursor again with smaller page size
-            continue
         rows = data.get("point_samples") or []
         for r in rows:
             name = r.get("name") or r.get("point") or r.get("point_name")
@@ -224,6 +240,24 @@ def upsert_timeseries(client: Client, site: str, samples: List[Dict]) -> int:
     return total
 
 
+def get_ingest_cursor(client: Client, site: str) -> str | None:
+    try:
+        res = client.table("ingest_state").select("backfill_end").eq("site_name", site).limit(1).execute()
+        data = res.data or []
+        if data and data[0].get("backfill_end"):
+            return str(data[0]["backfill_end"])  # ISO string
+    except Exception:
+        return None
+    return None
+
+
+def set_ingest_cursor(client: Client, site: str, end_iso: str) -> None:
+    try:
+        client.table("ingest_state").upsert({"site_name": site, "backfill_end": end_iso}, on_conflict="site_name").execute()
+    except Exception:
+        pass
+
+
 def run_backfill(
     client: Client,
     site: str,
@@ -233,6 +267,7 @@ def run_backfill(
     page_size: int,
     ace_token: str,
     max_chunks: int,
+    update_state: bool = False,
 ) -> Tuple[int, int]:
     processed = 0
     inserted = 0
@@ -258,6 +293,13 @@ def run_backfill(
 
         processed += 1
         window_end = window_start
+
+    # Persist new resume cursor for deep backfill
+    if update_state:
+        try:
+            set_ingest_cursor(client, site, iso(window_end))
+        except Exception as e:
+            print(f"[State] failed to update cursor: {e}", file=sys.stderr)
 
     return processed, inserted
 
@@ -285,13 +327,20 @@ def main():
     now = datetime.now(tz=timezone.utc)
     start_default = datetime(2025, 1, 1, 0, 0, 0, tzinfo=timezone.utc)
     start_dt = parse_iso(args.start) if args.start else start_default
+    client: Client = create_client(supabase_url, supabase_key)
+
     if args.end:
         end_dt = parse_iso(args.end)
+        stateful = False
     else:
-        earliest_ms = get_site_earliest_ts(supabase_url, supabase_key, args.site)
-        end_dt = datetime.fromtimestamp(earliest_ms / 1000, tz=timezone.utc) if earliest_ms else now
-
-    client: Client = create_client(supabase_url, supabase_key)
+        cur = get_ingest_cursor(client, args.site)
+        if cur:
+            end_dt = parse_iso(cur)
+            stateful = True
+        else:
+            earliest_ms = get_site_earliest_ts(supabase_url, supabase_key, args.site)
+            end_dt = datetime.fromtimestamp(earliest_ms / 1000, tz=timezone.utc) if earliest_ms else now
+            stateful = True
 
     processed, inserted = run_backfill(
         client,
@@ -302,6 +351,7 @@ def main():
         page_size=max(10, int(args.page_size)),
         ace_token=ace_token,
         max_chunks=max(1, int(args.max_chunks)),
+        update_state=stateful,
     )
 
     print(f"Done. processed_chunks={processed} rows_inserted={inserted}")
