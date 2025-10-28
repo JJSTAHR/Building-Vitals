@@ -125,9 +125,16 @@ def fetch_paginated_window(
         else:
             # Exhausted retries
             raise last_err
-        if not resp.ok:
-            raise RuntimeError(f"ACE {resp.status_code}: {resp.text[:200]}")
-        data = resp.json() if resp.content else {}
+        try:
+            if not resp.ok:
+                raise RuntimeError(f"ACE {resp.status_code}: {resp.text[:200]}")
+            data = resp.json() if resp.content else {}
+        except (requests.exceptions.ChunkedEncodingError, requests.exceptions.ContentDecodingError, ValueError, requests.exceptions.RequestException) as e:
+            # If parsing failed mid-stream, reduce page size and retry this page in next loop
+            if effective_page_size > 20000:
+                effective_page_size = max(10000, effective_page_size // 2)
+            # Try the same cursor again with smaller page size
+            continue
         rows = data.get("point_samples") or []
         for r in rows:
             name = r.get("name") or r.get("point") or r.get("point_name")
