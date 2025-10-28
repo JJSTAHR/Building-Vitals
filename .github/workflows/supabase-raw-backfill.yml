@@ -94,7 +94,7 @@ jobs:
       SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
       ACE_API_KEY: ${{ secrets.ACE_API_KEY }}
       PROXY_URL: https://ace-iot-timeseries-prod.jstahr.workers.dev
-      USE_ACE_CLI: "1"
+      USE_ACE_CLI: "0"
       ACE_API_BASE: https://ace-iot-timeseries-prod.jstahr.workers.dev/api
     steps:
       - name: Checkout
