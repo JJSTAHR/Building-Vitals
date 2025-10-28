@@ -21,15 +21,15 @@ on:
       page_size:
         description: "ACE paginated page size"
         required: true
-        default: "500000"
+        default: "100000"
       max_chunks:
         description: "Max chunks to process this run"
         required: true
-        default: "120"
+        default: "60"
 
 concurrency:
   group: supabase-raw-backfill
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 permissions:
   contents: read
@@ -126,8 +126,8 @@ jobs:
             --start "$TAIL_START" \
             --end "$NOW_ISO" \
             --chunk-minutes "${{ github.event.inputs.chunk_minutes || '10' }}" \
-            --page-size "${{ github.event.inputs.page_size || '500000' }}" \
-            --max-chunks "${{ github.event.inputs.max_chunks || '120' }}"
+            --page-size "${{ github.event.inputs.page_size || '100000' }}" \
+            --max-chunks "${{ github.event.inputs.max_chunks || '60' }}"
 
       - name: Deep RAW backfill to Jan 1 (per site)
         run: |
@@ -138,5 +138,5 @@ jobs:
             --start "${{ steps.when.outputs.start_iso }}" \
             $END_ARG \
             --chunk-minutes "${{ github.event.inputs.chunk_minutes || '10' }}" \
-            --page-size "${{ github.event.inputs.page_size || '500000' }}" \
-            --max-chunks "${{ github.event.inputs.max_chunks || '120' }}"
+            --page-size "${{ github.event.inputs.page_size || '100000' }}" \
+            --max-chunks "${{ github.event.inputs.max_chunks || '60' }}"
