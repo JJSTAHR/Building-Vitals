@@ -1,0 +1,37 @@
+#:schema node_modules/wrangler/config-schema.json
+name = "building-vitals-watchdog"
+main = "src/watchdog-worker.js"
+compatibility_date = "2024-12-01"
+compatibility_flags = ["nodejs_compat"]
+
+[triggers]
+crons = [
+  "* * * * *"  # every minute
+]
+
+[vars]
+PROXY_URL = "https://ace-iot-timeseries-prod.jstahr.workers.dev"
+ETL_URL = "https://ace-iot-etl-sync-prod.jstahr.workers.dev"
+SUPA_BACKFILL_START_ISO = "2025-01-01T00:00:00Z"
+BACKFILL_CHUNK_MIN = "10"
+BACKFILL_CHUNKS_PER_TICK = "12"
+
+[env.production]
+name = "building-vitals-watchdog-prod"
+
+[[env.production.kv_namespaces]]
+binding = "ETL_STATE"
+id = "2aa76a875ca847e1ba38dc033c2f54ab"
+preview_id = "685f18d960a04a4a8892254e72458341"
+
+[env.production.vars]
+PROXY_URL = "https://ace-iot-timeseries-prod.jstahr.workers.dev"
+ETL_URL = "https://ace-iot-etl-sync-prod.jstahr.workers.dev"
+SUPA_BACKFILL_START_ISO = "2025-01-01T00:00:00Z"
+BACKFILL_CHUNK_MIN = "10"
+BACKFILL_CHUNKS_PER_TICK = "12"
+
+[[kv_namespaces]]
+binding = "ETL_STATE"
+id = "2aa76a875ca847e1ba38dc033c2f54ab"
+preview_id = "685f18d960a04a4a8892254e72458341"

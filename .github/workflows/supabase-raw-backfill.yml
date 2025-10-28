@@ -1,0 +1,125 @@
+name: Supabase RAW Backfill (Paginated)
+
+on:
+  schedule:
+    - cron: '*/2 * * * *'  # every 2 minutes tail-fill (all sites)
+  workflow_dispatch:
+    inputs:
+      site:
+        description: "Optional: run for a single site (e.g., ses_falls_city). If empty, runs for all sites."
+        required: false
+      start_iso:
+        description: "Start ISO (e.g., 2025-10-01T00:00:00Z). Default: end-60m"
+        required: false
+      end_iso:
+        description: "End ISO (default: now)"
+        required: false
+      chunk_minutes:
+        description: "Chunk size in minutes"
+        required: true
+        default: "10"
+      page_size:
+        description: "ACE paginated page size"
+        required: true
+        default: "100000"
+      max_chunks:
+        description: "Max chunks to process this run"
+        required: true
+        default: "120"
+
+concurrency:
+  group: supabase-raw-backfill
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  discover:
+    runs-on: ubuntu-latest
+    outputs:
+      sites: ${{ steps.sites.outputs.sites }}
+    steps:
+      - name: Determine site list (single or all)
+        id: sites
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          INPUT_SITE: ${{ github.event.inputs.site }}
+        shell: bash
+        run: |
+          if [ -n "$INPUT_SITE" ]; then
+            echo "sites=[\"$INPUT_SITE\"]" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+          base="${SUPABASE_URL%/}"
+          resp=$(curl -sS "${base}/rest/v1/rpc/distinct_sites" \
+            -H "apikey: ${SUPABASE_SERVICE_ROLE_KEY}" \
+            -H "Authorization: Bearer ${SUPABASE_SERVICE_ROLE_KEY}")
+          if [ -z "$resp" ]; then resp="[]"; fi
+          # Ensure compact JSON array
+          echo "sites=$(echo "$resp" | jq -c .)" >> $GITHUB_OUTPUT
+
+  backfill:
+    runs-on: ubuntu-latest
+    needs: discover
+    strategy:
+      fail-fast: false
+      matrix:
+        site: ${{ fromJSON(needs.discover.outputs.sites) }}
+    timeout-minutes: 55
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r scripts/python/requirements.txt
+
+      - name: Compute defaults
+        id: when
+        shell: bash
+        run: |
+          # Default deep backfill start to 2025-01-01; leave end blank to use earliest existing ts
+          START_ISO="${{ github.event.inputs.start_iso }}"
+          if [ -z "$START_ISO" ]; then START_ISO="2025-01-01T00:00:00Z"; fi
+          echo "start_iso=$START_ISO" >> $GITHUB_OUTPUT
+
+      - name: Near-now RAW tail-fill (per site)
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          ACE_API_KEY: ${{ secrets.ACE_API_KEY }}
+        run: |
+          # Tail-fill last 120 minutes up to now for freshness
+          NOW_ISO=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+          TAIL_START=$(date -u -d "$NOW_ISO - 120 minutes" +"%Y-%m-%dT%H:%M:%SZ")
+          python scripts/python/backfill_paginated_raw.py \
+            --site "${{ matrix.site }}" \
+            --start "$TAIL_START" \
+            --end "$NOW_ISO" \
+            --chunk-minutes "${{ github.event.inputs.chunk_minutes || '10' }}" \
+            --page-size "${{ github.event.inputs.page_size || '100000' }}" \
+            --max-chunks "${{ github.event.inputs.max_chunks || '120' }}"
+
+      - name: Deep RAW backfill to Jan 1 (per site)
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          ACE_API_KEY: ${{ secrets.ACE_API_KEY }}
+        run: |
+          END_ARG=""
+          if [ -n "${{ github.event.inputs.end_iso }}" ]; then END_ARG="--end \"${{ github.event.inputs.end_iso }}\""; fi
+          python scripts/python/backfill_paginated_raw.py \
+            --site "${{ matrix.site }}" \
+            --start "${{ steps.when.outputs.start_iso }}" \
+            $END_ARG \
+            --chunk-minutes "${{ github.event.inputs.chunk_minutes || '10' }}" \
+            --page-size "${{ github.event.inputs.page_size || '100000' }}" \
+            --max-chunks "${{ github.event.inputs.max_chunks || '120' }}"

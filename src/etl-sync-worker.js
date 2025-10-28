@@ -22,15 +22,9 @@
  * @module etl-sync-worker
  */
 
-import {
-  batchInsertTimeseries,
-  getNewestTimestamp,
-  updateQueryMetadata,
-  recordDataQuality,
-  healthCheck,
-  getStats
-} from './lib/d1-client.js';
-import { writeNDJSONToR2 } from './lib/r2-ndjson-writer.js';
+// D1/R2 removed as primary stores; Supabase is the single source of truth
+// import { healthCheck, getStats } from './lib/d1-client.js';
+import * as Supa from './lib/supabase-store.js';
 
 // ============================================================================
 // Configuration Constants
@@ -42,7 +36,11 @@ const CONFIG = {
 
   // Sync Configuration
   SYNC_INTERVAL_MINUTES: 5,
-  LOOKBACK_BUFFER_MINUTES: 60, // 1 hour buffer to ensure data capture
+  // For mixed intervals (e.g., 30s and 5min), use a small lookback buffer so
+  // slower points aren't missed between runs. D1 writes are idempotent.
+  LOOKBACK_BUFFER_MINUTES: 10, // 10 minute buffer to ensure data capture
+  // Cap each incremental sync window to avoid oversized API pulls
+  MAX_SYNC_WINDOW_MINUTES: 30,
   MAX_RECORDS_PER_SYNC: 100000, // Increased for historical backfill
 
   // Batch Configuration
@@ -71,6 +69,18 @@ const CONFIG = {
 };
 
 // ============================================================================
+// Auth Helper
+// ============================================================================
+
+/**
+ * Resolve ACE auth token from env.
+ * Prefers ACE_API_KEY (service key), falls back to ACE_SITE_TOKEN/SITE_TOKEN (JWT).
+ */
+function getAceAuth(env) {
+  return env.ACE_API_KEY || env.ACE_SITE_TOKEN || env.SITE_TOKEN || '';
+}
+
+// ============================================================================
 // Worker Entry Points
 // ============================================================================
 
@@ -86,18 +96,118 @@ export default {
     const syncId = generateSyncId();
 
     try {
+      // Acquire minute-level lock to prevent overlap and thrash
+      const shardOf = parseInt(env.SHARD_OF || '1', 10) || 1;
+      const shardMod = parseInt(env.SHARD_MOD || '0', 10) || 0;
+      const lockKey = `etl:minute:${shardOf}:${shardMod}`;
+      const lockOk = await acquireDbLock(env, lockKey, 120);
+      if (!lockOk) {
+        console.log('[ETL] Another run is in progress; skipping this tick');
+        return;
+      }
+
+      // Fast no-op when data is already fresh (<= 60s)
+      try {
+        const age = await getHotAgeSeconds(env);
+        if (age !== null && age <= 60) {
+          console.log(`[ETL] Hot data is fresh (age=${age}s) — skipping`);
+          return;
+        }
+      } catch (e) {
+        console.warn('[ETL] Freshness check failed; proceeding anyway:', e?.message || e);
+      }
+
       // Pre-flight checks
       await performHealthChecks(env);
 
-      // Get sync state
+      // Auto-refresh site registry periodically (no user intervention)
+      try {
+        await autoRefreshSiteRegistry(env);
+      } catch (e) {
+        console.warn('[ETL] autoRefreshSiteRegistry failed:', e?.message || e);
+      }
+
+      // Get sync state (includes sites from KV registry)
       const syncState = await getSyncState(env);
       console.log('[ETL] Sync state:', syncState);
 
-      // Execute sync
-      const result = await executeSyncCycle(env, syncState, syncId);
+      // Choose a bounded subset of sites this tick (urgent first)
+      const selectedSites = await pickSitesForThisTick(env, syncState.sites);
+      const boundedState = { ...syncState, sites: selectedSites };
+      console.log(`[ETL] Selected ${selectedSites.length}/${syncState.sites.length} site(s) for this tick: ${selectedSites.join(', ')}`);
 
-      // Update state
+      // Execute initial sync for selected sites
+      let result = await executeSyncCycle(env, boundedState, syncId);
+
+      // Update state based on the actual newest processed timestamp
       await updateSyncState(env, result, syncId);
+
+      // Adaptive catch-up loop: if we're behind, run limited extra cycles
+      const TARGET_LAG_SEC = 90; // 1.5 minutes
+      const MAX_CATCHUP_CYCLES = 20;
+      const MAX_BUDGET_MS = 90000; // slightly larger budget
+      const loopStart = Date.now();
+
+      for (let i = 0; i < MAX_CATCHUP_CYCLES; i++) {
+        try {
+          // Compute current hot lag (prefer Supabase)
+          const ageCheck = await getHotAgeSeconds(env);
+          const ageSec = (ageCheck == null) ? Number.MAX_SAFE_INTEGER : ageCheck;
+          if (ageSec <= TARGET_LAG_SEC) break; // caught up enough
+
+          // Safety time budget
+          if ((Date.now() - loopStart) > MAX_BUDGET_MS) break;
+
+          // Run another incremental cycle (KV lastSync updated each pass)
+          const nextStateFull = await getSyncState(env);
+          const nextSelected = await pickSitesForThisTick(env, nextStateFull.sites);
+          const nextState = { ...nextStateFull, sites: nextSelected };
+          const nextId = generateSyncId();
+          const extra = await executeSyncCycle(env, nextState, nextId);
+          await updateSyncState(env, extra, nextId);
+          await recordMetrics(env, extra, startTime, nextId);
+        } catch (e) {
+          console.warn('[ETL] Catch-up cycle failed:', e?.message || e);
+          break; // avoid thrashing
+        }
+      }
+
+      // Hourly backfill: once at the top of the hour, re-sync the last hour window to fill any gaps
+      try {
+        const now = new Date();
+        const minute = now.getUTCMinutes();
+        // Only run on the top of the hour to avoid doing this every minute
+        if (minute === 0) {
+          const hourlyStateFull = await getSyncState(env);
+          const hourlySelected = await pickSitesForThisTick(env, hourlyStateFull.sites);
+          const hourlyState = { ...hourlyStateFull, sites: hourlySelected };
+          await runHourlyBackfill(env, hourlyState);
+          // Supabase gap backfill (bounded, idempotent, raw only)
+          await runSupabaseHourlyBackfill(env, hourlyState.sites);
+          // Monthly retention: on 1st day at 02:00 UTC, drop partitions older than 12 months
+          const day = now.getUTCDate();
+          const hour = now.getUTCHours();
+          if (day === 1 && hour === 2) {
+            try {
+              await dropOldTimeseriesPartitions(env);
+              console.log('[ETL] Supabase monthly retention: partitions older than 12 months dropped');
+            } catch (re) {
+              console.warn('[ETL] Supabase monthly retention failed:', re?.message || re);
+            }
+          }
+        } else {
+          // Every minute: quick tail fill (bounded one small chunk) (one small chunk)
+          try {
+            const age = await getHotAgeSeconds(env);
+            if (age !== null && age > 90) {
+              const state = await getSyncState(env);
+              await runSupabaseQuickTailFill(env, state.sites);
+            }
+          } catch {}
+        }
+      } catch (e) {
+        console.warn('[ETL] Hourly backfill skipped:', e?.message || e);
+      }
 
       // Record metrics
       await recordMetrics(env, result, startTime, syncId);
@@ -110,6 +220,13 @@ export default {
 
       // Re-throw for monitoring systems to catch
       throw error;
+    } finally {
+      // Ensure lock release even on early return or error
+      try {
+        await releaseDbLock(env, lockKey);
+      } catch (e) {
+        console.warn('[ETL] Failed to release lock:', e?.message || e);
+      }
     }
   },
 
@@ -135,6 +252,13 @@ export default {
 
     if (url.pathname === '/stats') {
       return handleStatsRequest(env);
+    }
+
+    if (url.pathname === '/admin/sites') {
+      // Lightweight admin; use any token header for auth parity with proxy
+      const tok = request.headers.get('Authorization') || request.headers.get('X-ACE-Token');
+      if (!tok) return new Response(JSON.stringify({ error: true, message: 'Missing authentication token' }), { status: 401, headers: { 'content-type': 'application/json' } });
+      return handleSitesAdmin(request, env);
     }
 
     return new Response('ETL Sync Worker - Use /health, /status, /stats, or /trigger', {
@@ -166,7 +290,8 @@ async function executeSyncCycle(env, syncState, syncId) {
     pointsProcessed: 0,
     apiCalls: 0,
     duration: 0,
-    errors: []
+    errors: [],
+    latestTimestampMs: 0
   };
 
   try {
@@ -195,6 +320,9 @@ async function executeSyncCycle(env, syncState, syncId) {
         result.recordsInserted += syncResult.inserted;
         result.recordsFailed += syncResult.failed;
         result.apiCalls += syncResult.apiCalls;
+        if (syncResult.maxTimestampMs && syncResult.maxTimestampMs > (result.latestTimestampMs || 0)) {
+          result.latestTimestampMs = syncResult.maxTimestampMs;
+        }
         // Note: We no longer fetch configured points list to avoid timeouts
         // Point count can be inferred from unique point_names in fetched samples
         result.pointsProcessed += syncResult.fetched; // Approximate point activity
@@ -265,16 +393,32 @@ async function syncAllPointsNoFilter(env, siteName, timeRange, syncId) {
     fetched: 0,
     inserted: 0,
     failed: 0,
-    apiCalls: 0
+    apiCalls: 0,
+    maxTimestampMs: 0
   };
 
-  // Fetch ALL timeseries data from ACE API (all points at once)
+  // Fetch ALL timeseries data from ACE API (point-chunked if available)
+  const enabledPoints = await (async () => {
+    try {
+      const pts = await fetchPointsList(env, siteName);
+      return Array.isArray(pts) ? pts.map(p => p.name || p.point || p.id).filter(Boolean) : [];
+    } catch {
+      return [];
+    }
+  })();
+
+  // For vendor base (flightdeck), omit point_names to avoid API-side filters at large scale
+  const apiBase = env.ACE_API_BASE || 'https://flightdeck.aceiot.cloud/api';
+  const usePointNames = !/flightdeck\.aceiot\.cloud\/api/i.test(apiBase);
+  const namesForFetch = usePointNames && enabledPoints && enabledPoints.length > 0 ? enabledPoints : null;
+
   const allTimeseriesData = await fetchAllTimeseries(
     env,
     siteName,
     timeRange.start,
     timeRange.end,
-    result
+    result,
+    namesForFetch
   );
 
   if (!allTimeseriesData || allTimeseriesData.length === 0) {
@@ -284,8 +428,16 @@ async function syncAllPointsNoFilter(env, siteName, timeRange, syncId) {
 
   console.log(`[ETL] Fetched ${allTimeseriesData.length} total samples from API`);
 
-  // Filter out NULL and NaN values only (no point filtering)
+  // Build enabled set for filtering if we have it
+  let enabledSet = null;
+  if (enabledPoints && enabledPoints.length > 0) {
+    enabledSet = new Set(enabledPoints);
+    console.log(`[ETL] Loaded ${enabledSet.size} collect-enabled points for filtering`);
+  }
+
+  // Filter out NULL/NaN values and restrict to collect-enabled points if available
   const filteredSamples = allTimeseriesData.filter(sample => {
+    if (enabledSet && enabledSet.size > 0 && !enabledSet.has(sample.name)) return false;
     // Filter out NULL values
     if (sample.value == null) return false;
 
@@ -322,44 +474,198 @@ async function syncAllPointsNoFilter(env, siteName, timeRange, syncId) {
     };
   });
 
-  console.log(`[ETL] Transformed ${allNormalizedSamples.length} samples for D1 insert`);
+  // Track the newest timestamp we are actually processing (ms)
+  if (allNormalizedSamples.length > 0) {
+    try {
+      const maxTs = Math.max(...allNormalizedSamples.map(s => s.timestamp));
+      if (Number.isFinite(maxTs)) {
+        result.maxTimestampMs = Math.max(result.maxTimestampMs || 0, maxTs);
+      }
+    } catch {}
+  }
+
+  console.log(`[ETL] Transformed ${allNormalizedSamples.length} samples for Supabase insert`);
 
   if (allNormalizedSamples.length === 0) {
     console.log(`[ETL] No data for configured points`);
     return result;
   }
 
-  // Batch insert to D1
-  const insertResult = await batchInsertTimeseries(
-    env.DB,
-    allNormalizedSamples
-  );
-
-  result.inserted = insertResult.inserted;
-  result.failed = insertResult.failed;
-
-  // Write to R2 cold storage for historical data (if R2 binding is available)
-  if (env.R2 && allNormalizedSamples.length > 0) {
+  // Write to Supabase (if configured)
+  if (env.SUPABASE_URL && (env.SUPABASE_SERVICE_ROLE_KEY || env.SUPABASE_ANON_KEY)) {
     try {
-      // Get date string for R2 path (YYYY-MM-DD format)
-      const now = new Date();
-      const dateStr = now.toISOString().split('T')[0]; // "2025-10-15"
-
-      console.log(`[ETL] Writing ${allNormalizedSamples.length} samples to R2 for date: ${dateStr}`);
-
-      // Write to R2 (async, non-blocking)
-      await writeNDJSONToR2(env.R2, siteName, dateStr, allNormalizedSamples);
-
-      console.log(`[ETL] R2 write complete for ${siteName}/${dateStr}`);
-    } catch (r2Error) {
-      console.error('[ETL] Failed to write to R2 (non-fatal):', r2Error);
-      // Don't fail the entire sync if R2 write fails
+      console.log(`[ETL] Writing ${allNormalizedSamples.length} samples to Supabase (raw)`);
+      const supaRes = await Supa.insertRaw(env, siteName, allNormalizedSamples);
+      console.log(`[ETL] Supabase write complete: ${supaRes.inserted} rows`);
+      result.inserted = supaRes.inserted;
+      result.failed = 0;
+    } catch (e) {
+      console.error('[ETL] Supabase write failed (non-fatal):', e?.message || e);
+      result.failed = allNormalizedSamples.length;
     }
-  } else if (!env.R2) {
-    console.log('[ETL] R2 binding not available, skipping cold storage write');
   }
 
   return result;
+}
+
+// ============================================================================
+// Hourly Backfill (Last 60 Minutes)
+// ============================================================================
+
+/**
+ * Run a small backfill for the last 60 minutes for all configured sites.
+ * This is safe to run hourly; D1 writes are idempotent (INSERT OR REPLACE).
+ */
+async function runHourlyBackfill(env, syncState) {
+  const endSec = Math.floor(Date.now() / 1000);
+  const startSec = endSec - (60 * 60);
+  const timeRange = { start: startSec, end: endSec };
+
+  console.log('[ETL] Hourly backfill: last 60 minutes');
+
+  for (const siteName of syncState.sites) {
+    try {
+      console.log(`[ETL] Hourly backfill -> site=${siteName} range=${new Date(startSec*1000).toISOString()} to ${new Date(endSec*1000).toISOString()}`);
+      const backfillResult = await syncAllPointsNoFilter(env, siteName, timeRange, `hourly_${Date.now()}`);
+      console.log('[ETL] Hourly backfill result:', {
+        site: siteName,
+        fetched: backfillResult.fetched,
+        inserted: backfillResult.inserted,
+        failed: backfillResult.failed,
+        apiCalls: backfillResult.apiCalls
+      });
+    } catch (e) {
+      console.warn('[ETL] Hourly backfill failed for site', siteName, e?.message || e);
+    }
+  }
+}
+
+// ============================================================================
+// Supabase Hourly Backfill (Bounded, Idempotent)
+// ============================================================================
+
+const SUPA_BACKFILL = {
+  KV_CURSOR_PREFIX: 'supa:backfill:cursor:',
+  CHUNK_MINUTES: 10,
+  MAX_CHUNKS_PER_HOUR: 6,
+  EARLIEST_ISO: '2025-10-01T00:00:00Z'
+};
+
+async function runSupabaseHourlyBackfill(env, sites) {
+  // Only run if Supabase is configured
+  if (!env.SUPABASE_URL || !(env.SUPABASE_SERVICE_ROLE_KEY || env.SUPABASE_ANON_KEY)) return;
+
+  const nowMs = Date.now();
+  const chunkMinutes = parseInt(env.SUPA_BACKFILL_CHUNK_MIN || String(SUPA_BACKFILL.CHUNK_MINUTES || 10), 10) || 10;
+  const maxChunks = parseInt(env.SUPA_BACKFILL_MAX_CHUNKS || String(SUPA_BACKFILL.MAX_CHUNKS_PER_HOUR || 6), 10) || 6;
+  const chunkMs = chunkMinutes * 60 * 1000;
+  const earliestMs = Date.parse(env.SUPA_BACKFILL_START_ISO || SUPA_BACKFILL.EARLIEST_ISO);
+  if (!Number.isFinite(earliestMs)) return;
+
+  for (const siteName of sites || []) {
+    try {
+      const cursorKey = `${SUPA_BACKFILL.KV_CURSOR_PREFIX}${siteName}`;
+      let endIso = await env.ETL_STATE.get(cursorKey);
+      if (!endIso) endIso = new Date(nowMs).toISOString();
+      let endMs = Date.parse(endIso);
+      if (!Number.isFinite(endMs) || endMs <= 0) endMs = nowMs;
+
+      let processed = 0;
+      while (processed < maxChunks && endMs > earliestMs) {
+        const startMs = endMs - chunkMs;
+        const startSec = Math.floor(startMs / 1000);
+        const endSec = Math.floor(endMs / 1000);
+
+        try {
+          const tmpRes = { apiCalls: 0 };
+          // Fetch ACE raw window using existing paginated client (raw_data=true)
+          const samples = await fetchAllTimeseries(env, siteName, startSec, endSec, tmpRes, null);
+          if (samples && samples.length > 0) {
+            const normalized = samples.map(s => ({
+              point_name: s.name,
+              timestamp: Math.floor(new Date(s.time).getTime()),
+              value: parseFloat(s.value)
+            })).filter(r => r.point_name && Number.isFinite(r.timestamp) && Number.isFinite(r.value));
+            if (normalized.length > 0) {
+              // Idempotent upsert (adapter ignores duplicates)
+              await Supa.insertRaw(env, siteName, normalized);
+              console.log(`[SupabaseBackfill] ${siteName} inserted ${normalized.length} rows for ${new Date(startMs).toISOString()} -> ${new Date(endMs).toISOString()}`);
+            }
+          }
+        } catch (e) {
+          console.warn('[SupabaseBackfill] window failed', siteName, new Date(startMs).toISOString(), new Date(endMs).toISOString(), e?.message || e);
+          break; // stop looping this hour if an error occurs
+        }
+
+        endMs = startMs; // step back
+        processed++;
+      }
+
+      // Persist new cursor
+      await env.ETL_STATE.put(cursorKey, new Date(endMs).toISOString());
+    } catch (e) {
+      console.warn('[SupabaseBackfill] skipped for site', siteName, e?.message || e);
+    }
+  }
+}
+
+// ============================================================================
+// Supabase Quick Tail Fill (single recent chunk)
+// ============================================================================
+/**
+ * Run a single small backfill window ending at now for each site.
+ * Used every ~5 minutes when hot data is lagging to reduce age quickly.
+ *
+ * - Bounded to one chunk per site (default 10 minutes)
+ * - Idempotent via insertRaw ignore-duplicates
+ */
+async function runSupabaseQuickTailFill(env, sites) {
+  if (!env.SUPABASE_URL || !(env.SUPABASE_SERVICE_ROLE_KEY || env.SUPABASE_ANON_KEY)) return;
+  const chunkMinutes = parseInt(env.SUPA_BACKFILL_CHUNK_MIN || '10', 10) || 10;
+  const endMs = Date.now();
+  const startMs = endMs - (chunkMinutes * 60 * 1000);
+  const startSec = Math.floor(startMs / 1000);
+  const endSec = Math.floor(endMs / 1000);
+
+  for (const siteName of sites || []) {
+    try {
+      const tmpRes = { apiCalls: 0 };
+      const samples = await fetchAllTimeseries(env, siteName, startSec, endSec, tmpRes, null);
+      if (!samples || samples.length === 0) continue;
+      const normalized = samples.map(s => ({
+        point_name: s.name,
+        timestamp: Math.floor(new Date(s.time).getTime()),
+        value: parseFloat(s.value)
+      })).filter(r => r.point_name && Number.isFinite(r.timestamp) && Number.isFinite(r.value));
+      if (normalized.length > 0) {
+        await Supa.insertRaw(env, siteName, normalized);
+        console.log(`[QuickTail] ${siteName} inserted ${normalized.length} rows for ${new Date(startMs).toISOString()} -> ${new Date(endMs).toISOString()}`);
+      }
+    } catch (e) {
+      console.warn('[QuickTail] failed for site', siteName, e?.message || e);
+    }
+  }
+}
+
+// Call Supabase RPC to drop old partitions (> 12 months)
+async function dropOldTimeseriesPartitions(env) {
+  const baseUrl = (env.SUPABASE_URL || '').replace(/\/$/, '');
+  const key = env.SUPABASE_SERVICE_ROLE_KEY || env.SUPABASE_ANON_KEY;
+  if (!baseUrl || !key) return;
+  const url = `${baseUrl}/rest/v1/rpc/drop_old_timeseries_partitions`;
+  const resp = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'apikey': key,
+      'Authorization': `Bearer ${key}`,
+      'Content-Type': 'application/json'
+    },
+    body: '{}'
+  });
+  if (!resp.ok) {
+    const txt = await resp.text().catch(()=>'');
+    throw new Error(`Supabase RPC drop_old_timeseries_partitions failed: ${resp.status} ${txt}`);
+  }
 }
 
 // ============================================================================
@@ -399,7 +705,7 @@ async function fetchPointsList(env, siteName) {
 
     const response = await fetchWithRetry(url, {
       headers: {
-        'authorization': `Bearer ${env.ACE_API_KEY}`,
+        'authorization': `Bearer ${getAceAuth(env)}`,
         'Content-Type': 'application/json'
       }
     });
@@ -467,7 +773,7 @@ async function fetchPointsList(env, siteName) {
  * @param {Object} result - Result object to update with API call count
  * @returns {Promise<Array>} Flat array of samples { name, value, time }
  */
-async function fetchAllTimeseries(env, siteName, startTime, endTime, result) {
+async function fetchAllTimeseries(env, siteName, startTime, endTime, result, pointNames = null) {
   const apiBase = env.ACE_API_BASE || 'https://flightdeck.aceiot.cloud/api';
   const allSamples = [];
   let cursor = null;
@@ -479,14 +785,24 @@ async function fetchAllTimeseries(env, siteName, startTime, endTime, result) {
 
   console.log(`[ACE API] Fetching site timeseries (RAW mode - actual sensor readings): ${startISO} to ${endISO}`);
 
-  do {
+  const pointChunks = Array.isArray(pointNames) && pointNames.length > 0
+    ? Array.from({ length: Math.ceil(pointNames.length / 400) }, (_, i) => pointNames.slice(i * 400, (i + 1) * 400))
+    : [null];
+
+  for (const pnChunk of pointChunks) {
+    cursor = null;
+    pageCount = 0;
+    do {
     // Build paginated endpoint URL
     const url = new URL(`${apiBase}/sites/${siteName}/timeseries/paginated`);
     url.searchParams.set('start_time', startISO);
     url.searchParams.set('end_time', endISO);
-    url.searchParams.set('page_size', '100000'); // Large page size to minimize API calls
+    url.searchParams.set('page_size', '10000'); // ACE limit: use 10k per page
     url.searchParams.set('raw_data', 'true'); // RAW MODE: Get actual sensor readings per user requirement
 
+    if (pnChunk && pnChunk.length > 0) {
+      url.searchParams.set('point_names', pnChunk.join(','));
+    }
     if (cursor) {
       url.searchParams.set('cursor', cursor);
     }
@@ -496,7 +812,7 @@ async function fetchAllTimeseries(env, siteName, startTime, endTime, result) {
 
     const response = await fetchWithRetry(url.toString(), {
       headers: {
-        'authorization': `Bearer ${env.ACE_API_KEY}`,
+        'authorization': `Bearer ${getAceAuth(env)}`,
         'Content-Type': 'application/json'
       },
       signal: AbortSignal.timeout(CONFIG.ACE_TIMEOUT_MS)
@@ -531,10 +847,114 @@ async function fetchAllTimeseries(env, siteName, startTime, endTime, result) {
       break;
     }
 
-  } while (cursor);
+    } while (cursor);
+  }
 
   console.log(`[ACE API] Timeseries fetch complete: ${pageCount} pages, ${allSamples.length} total samples`);
   return allSamples;
+}
+
+/**
+ * Fetch sites list from ACE API (auto-discovery), with pagination & safety.
+ */
+async function fetchAceSites(env) {
+  const apiBase = env.ACE_API_BASE || 'https://flightdeck.aceiot.cloud/api';
+  const headers = {
+    'authorization': `Bearer ${getAceAuth(env)}`,
+    'Content-Type': 'application/json'
+  };
+  const result = [];
+  let page = 1;
+  let totalPages = 1;
+  do {
+    const url = `${apiBase}/sites?page=${page}&per_page=100`;
+    const resp = await fetchWithRetry(url, { headers, signal: AbortSignal.timeout(CONFIG.ACE_TIMEOUT_MS) });
+    if (!resp.ok) {
+      const t = await resp.text();
+      throw new Error(`ACE sites list failed: ${resp.status} ${resp.statusText} ${t}`);
+    }
+    const data = await resp.json().catch(()=>({}));
+    const items = data.items || data.sites || data || [];
+    for (const it of (items || [])) {
+      const name = it.name || it.site_name || it.slug || it.id || null;
+      if (name) result.push(String(name));
+    }
+    if (page === 1) {
+      const total = data.total || data.count || result.length;
+      const per = data.per_page || 100;
+      totalPages = Math.max(1, Math.ceil(total / per));
+    }
+    page++;
+    if (page > 200) break;
+  } while (page <= totalPages);
+  return Array.from(new Set(result)).sort();
+}
+
+/**
+ * Periodically refresh the site registry from ACE without user intervention.
+ * Uses ETL_STATE keys: sites:list and sites:last_refresh.
+ */
+async function autoRefreshSiteRegistry(env) {
+  const ttlMin = parseInt(env.SITES_REFRESH_MINUTES || '10', 10) || 10;
+  const now = Date.now();
+  const lastStr = await env.ETL_STATE.get('sites:last_refresh').catch(()=>null);
+  const last = lastStr ? parseInt(lastStr, 10) : 0;
+  if (last && (now - last) < ttlMin * 60 * 1000) return; // fresh enough
+  try {
+    const sites = await fetchAceSites(env);
+    if (sites && sites.length > 0) {
+      await env.ETL_STATE.put('sites:list', JSON.stringify(sites));
+      await env.ETL_STATE.put('sites:last_refresh', String(now));
+      console.log(`[ETL] Auto-refreshed site registry (${sites.length} sites)`);
+    }
+  } catch (e) {
+    console.warn('[ETL] Auto site refresh failed:', e?.message || e);
+  }
+}
+
+/**
+ * Pick a bounded set of sites for this tick, prioritizing lagging sites.
+ * Stores a round-robin cursor in KV to fairly rotate.
+ */
+async function pickSitesForThisTick(env, allSites) {
+  const sites = Array.from(new Set((allSites || []).map(String).filter(Boolean)));
+  const max = Math.max(1, parseInt(env.MAX_SITES_PER_TICK || '6', 10) || 6);
+  if (sites.length <= max) return sites;
+
+  // Compute per-site age (Supabase preferred)
+  const ages = new Map();
+  for (const s of sites) {
+    try {
+      if (env.SUPABASE_URL && (env.SUPABASE_SERVICE_ROLE_KEY || env.SUPABASE_ANON_KEY)) {
+        const a = await Supa.getFreshnessAgeSecondsBySite(env, s);
+        ages.set(s, (a == null ? Number.POSITIVE_INFINITY : a));
+      } else {
+        const row = await env.DB.prepare('SELECT MAX(timestamp) AS max_ts FROM timeseries_raw WHERE site_name = ?').bind(s).first();
+        const mx = row?.max_ts ? row.max_ts * 1000 : 0;
+        const a = mx > 0 ? Math.floor((Date.now() - mx) / 1000) : Number.POSITIVE_INFINITY;
+        ages.set(s, a);
+      }
+    } catch {
+      ages.set(s, Number.POSITIVE_INFINITY);
+    }
+  }
+
+  // Urgent first (age > 90s)
+  const urgent = sites.filter(s => (ages.get(s) ?? 0) > 300);
+  const selected = urgent.slice(0, max);
+  if (selected.length >= max) return selected;
+
+  // Round-robin remainder
+  const cursorStr = await env.ETL_STATE.get('sites:cursor').catch(()=>null);
+  let cursor = cursorStr ? parseInt(cursorStr, 10) : 0;
+  const nonUrgent = sites.filter(s => !urgent.includes(s));
+  const rr = [];
+  for (let i = 0; i < nonUrgent.length && selected.length + rr.length < max; i++) {
+    rr.push(nonUrgent[(cursor + i) % nonUrgent.length]);
+  }
+  cursor = (cursor + rr.length) % Math.max(1, nonUrgent.length);
+  await env.ETL_STATE.put('sites:cursor', String(cursor));
+  return Array.from(new Set([...selected, ...rr])).slice(0, max);
 }
 
 /**
@@ -553,7 +973,7 @@ async function fetchWeatherData(env, siteName) {
 
   const response = await fetchWithRetry(url, {
     headers: {
-      'authorization': `Bearer ${env.ACE_API_KEY}`,
+      'authorization': `Bearer ${getAceAuth(env)}`,
       'Content-Type': 'application/json'
     },
     signal: AbortSignal.timeout(CONFIG.ACE_TIMEOUT_MS)
@@ -624,17 +1044,22 @@ async function syncWeatherData(env, siteName) {
       }
     }
 
-    console.log(`[ETL] Transformed ${weatherPoints.length} weather metrics for D1 insert`);
+    console.log(`[ETL] Transformed ${weatherPoints.length} weather metrics for Supabase insert`);
 
     if (weatherPoints.length === 0) {
       console.log(`[ETL] No valid weather metrics to insert`);
       return result;
     }
 
-    // Batch insert weather data
-    const insertResult = await batchInsertTimeseries(env.DB, weatherPoints);
-    result.inserted = insertResult.inserted;
-    result.failed = insertResult.failed;
+    // Insert weather data into Supabase
+    try {
+      const supaRes = await Supa.insertRaw(env, siteName, weatherPoints);
+      result.inserted = supaRes.inserted || 0;
+      result.failed = 0;
+    } catch (e) {
+      console.error('[ETL] Weather Supabase write failed:', e?.message || e);
+      result.failed = weatherPoints.length;
+    }
 
     return result;
 
@@ -727,9 +1152,24 @@ async function getSyncState(env) {
   // First sync starts from 24 hours ago, then incremental from last sync timestamp
   const defaultStartTime = now - (24 * 60 * 60 * 1000); // 24 hours for first sync
 
-  // Support multiple sites via comma-separated env var
-  const sitesConfig = env.SITE_NAME || 'ses_falls_city';
-  const sites = sitesConfig.split(',').map(s => s.trim());
+  // Load sites from KV registry if present; fallback to comma-separated env var
+  let sites = [];
+  try {
+    const json = await env.ETL_STATE.get('sites:list', { type: 'json' });
+    if (Array.isArray(json) && json.length > 0) {
+      sites = json.map(s => String(s).trim()).filter(Boolean);
+    }
+  } catch {}
+  if (!sites || sites.length === 0) {
+    const sitesConfig = env.SITE_NAME || 'ses_falls_city';
+    sites = sitesConfig.split(',').map(s => s.trim()).filter(Boolean);
+  }
+  // Optional sharding: keep only sites matching SHARD_MOD of SHARD_OF
+  const shardOf = parseInt(env.SHARD_OF || '1', 10) || 1;
+  const shardMod = parseInt(env.SHARD_MOD || '0', 10) || 0;
+  if (shardOf > 1) {
+    sites = sites.filter(s => (hashStr(s) % shardOf) === shardMod);
+  }
 
   return {
     lastSyncTimestamp: lastSyncStr ? parseInt(lastSyncStr) : defaultStartTime,
@@ -748,11 +1188,23 @@ async function getSyncState(env) {
  */
 async function updateSyncState(env, result, syncId) {
   const now = Date.now();
+  // Advance only when we actually processed data; otherwise retain last value
+  let effectiveTs = now;
+  if (result && result.latestTimestampMs && Number.isFinite(result.latestTimestampMs)) {
+    effectiveTs = result.latestTimestampMs;
+  } else {
+    try {
+      const state = await getSyncState(env);
+      effectiveTs = state.lastSyncTimestamp || now;
+    } catch {
+      effectiveTs = now;
+    }
+  }
 
   // Update last sync timestamp
   await env.ETL_STATE.put(
     CONFIG.KV_LAST_SYNC_KEY,
-    now.toString(),
+    String(effectiveTs),
     {
       metadata: {
         syncId,
@@ -802,10 +1254,19 @@ function calculateTimeRange(syncState) {
     end = Math.floor(now / 1000);                 // now in seconds
     console.log(`[ETL] FIRST SYNC: Fetching last 24 hours of data`);
   } else {
-    // Incremental: From last sync to now
-    start = Math.floor(syncState.lastSyncTimestamp / 1000);
+    // Incremental: From last sync minus lookback buffer to now (to capture 5-min/30s points)
+    const bufferMs = CONFIG.LOOKBACK_BUFFER_MINUTES * 60 * 1000;
+    start = Math.floor((syncState.lastSyncTimestamp - bufferMs) / 1000);
+    if (start < 0) start = 0;
     end = Math.floor(now / 1000);
     console.log(`[ETL] INCREMENTAL SYNC: From last sync to now`);
+  }
+
+  // Cap the window length to avoid oversized queries per cycle
+  const maxWindowSec = (CONFIG.MAX_SYNC_WINDOW_MINUTES || 15) * 60;
+  if ((end - start) > maxWindowSec) {
+    end = start + maxWindowSec;
+    console.log(`[ETL] Window capped to ${CONFIG.MAX_SYNC_WINDOW_MINUTES} minutes to prevent large pulls`);
   }
 
   console.log(`[ETL] Time range: ${new Date(start * 1000).toISOString()} → ${new Date(end * 1000).toISOString()} (${isFirstSync ? 'FIRST' : 'INCREMENTAL'})`);
@@ -895,18 +1356,19 @@ async function handleSyncError(env, error, syncId, startTime) {
  * Perform pre-flight health checks
  */
 async function performHealthChecks(env) {
-  // Check D1 connection
-  const dbHealthy = await healthCheck(env.DB);
-  if (!dbHealthy) {
-    throw new Error('D1 database health check failed');
-  }
-
   // Check KV availability
   try {
     await env.ETL_STATE.get('health_check');
   } catch (error) {
     throw new Error('KV namespace health check failed');
   }
+
+  // Optional: check Supabase availability
+  try {
+    if (env.SUPABASE_URL && (env.SUPABASE_SERVICE_ROLE_KEY || env.SUPABASE_ANON_KEY)) {
+      await Supa.getFreshnessAgeSeconds(env).catch(()=>null);
+    }
+  } catch {}
 
   console.log('[ETL] Health checks passed');
 }
@@ -942,14 +1404,12 @@ async function recordMetrics(env, result, startTime, syncId) {
  */
 async function handleHealthCheck(env) {
   try {
-    const dbHealthy = await healthCheck(env.DB);
-
     return new Response(JSON.stringify({
-      status: dbHealthy ? 'healthy' : 'unhealthy',
-      database: dbHealthy ? 'connected' : 'disconnected',
+      status: 'healthy',
+      database: 'supabase',
       timestamp: new Date().toISOString()
     }), {
-      status: dbHealthy ? 200 : 503,
+      status: 200,
       headers: { 'Content-Type': 'application/json' }
     });
   } catch (error) {
@@ -969,18 +1429,16 @@ async function handleHealthCheck(env) {
 async function handleStatusCheck(env) {
   try {
     const syncState = await getSyncState(env);
-    const stats = await getStats(env.DB);
-
-    return new Response(JSON.stringify({
+    const age = await getHotAgeSeconds(env);
+    const payload = {
       status: 'running',
       lastSync: new Date(syncState.lastSyncTimestamp).toISOString(),
-      siteName: syncState.siteName,
-      database: stats,
+      sites: syncState.sites,
+      freshness_age_sec: age,
+      db: 'supabase',
       timestamp: new Date().toISOString()
-    }), {
-      status: 200,
-      headers: { 'Content-Type': 'application/json' }
-    });
+    };
+    return new Response(JSON.stringify(payload), { status: 200, headers: { 'Content-Type': 'application/json' } });
   } catch (error) {
     return new Response(JSON.stringify({
       status: 'error',
@@ -997,12 +1455,9 @@ async function handleStatusCheck(env) {
  */
 async function handleStatsRequest(env) {
   try {
-    const stats = await getStats(env.DB);
-
-    return new Response(JSON.stringify(stats), {
-      status: 200,
-      headers: { 'Content-Type': 'application/json' }
-    });
+    const age = await getHotAgeSeconds(env);
+    const out = { freshness_age_sec: age, db: 'supabase', time: new Date().toISOString() };
+    return new Response(JSON.stringify(out), { status: 200, headers: { 'Content-Type': 'application/json' } });
   } catch (error) {
     return new Response(JSON.stringify({
       error: error.message
@@ -1059,4 +1514,134 @@ function generateSyncId() {
  */
 function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+// ============================================================================
+// Locking & Freshness Utilities
+// ============================================================================
+
+/**
+ * Acquire a minute-level lock using KV to avoid overlapping runs.
+ * Non-atomic but sufficient for Worker cron jitter; TTL keeps it bounded.
+ *
+ * @param {Object} env
+ * @param {string} key - Logical lock name
+ * @param {number} ttlSec - Time-to-live in seconds
+ * @returns {Promise<boolean>} true if acquired, false if held by another
+ */
+async function acquireDbLock(env, key, ttlSec = 120) {
+  try {
+    const kvKey = `lock:${key}`;
+    const now = Date.now();
+    const existing = await env.ETL_STATE.get(kvKey, { type: 'json' });
+    if (existing && typeof existing.expiresAt === 'number' && existing.expiresAt > now) {
+      return false; // lock currently held
+    }
+
+    const record = {
+      acquiredAt: now,
+      expiresAt: now + (ttlSec * 1000),
+      id: generateSyncId()
+    };
+
+    await env.ETL_STATE.put(kvKey, JSON.stringify(record), { expirationTtl: ttlSec });
+    return true;
+  } catch (e) {
+    console.warn('[ETL] acquireDbLock error, proceeding without lock:', e?.message || e);
+    // Fail-open to avoid stopping ETL entirely
+    return true;
+  }
+}
+
+/**
+ * Release a KV lock (best-effort). Safe if key is already gone/expired.
+ */
+async function releaseDbLock(env, key) {
+  try {
+    const kvKey = `lock:${key}`;
+    await env.ETL_STATE.delete(kvKey);
+  } catch (e) {
+    console.warn('[ETL] releaseDbLock error:', e?.message || e);
+  }
+}
+
+// ============================================================================
+// Site Registry Admin (ETL_STATE)
+// ============================================================================
+
+function hashStr(s) {
+  // djb2
+  let h = 5381;
+  for (let i = 0; i < s.length; i++) {
+    h = ((h << 5) + h) + s.charCodeAt(i);
+    h = h | 0;
+  }
+  return Math.abs(h);
+}
+
+async function getSiteRegistry(env) {
+  try {
+    const arr = await env.ETL_STATE.get('sites:list', { type: 'json' });
+    if (Array.isArray(arr)) return Array.from(new Set(arr.map(x => String(x).trim()).filter(Boolean)));
+  } catch {}
+  const cfg = (env.SITE_NAME || 'ses_falls_city').split(',').map(s => s.trim()).filter(Boolean);
+  return Array.from(new Set(cfg));
+}
+
+async function setSiteRegistry(env, sites) {
+  const list = Array.from(new Set((sites || []).map(x => String(x).trim()).filter(Boolean)));
+  await env.ETL_STATE.put('sites:list', JSON.stringify(list));
+  return list;
+}
+
+async function handleSitesAdmin(request, env) {
+  const url = new URL(request.url);
+  if (request.method === 'GET') {
+    const sites = await getSiteRegistry(env);
+    return new Response(JSON.stringify({ sites }), { status: 200, headers: { 'content-type': 'application/json' } });
+  }
+  if (request.method === 'POST') {
+    const body = await request.json().catch(()=>({}));
+    let sites = await getSiteRegistry(env);
+    const add = Array.isArray(body?.add) ? body.add : (body?.site ? [body.site] : []);
+    if (Array.isArray(body?.set)) sites = [];
+    const merged = Array.from(new Set([...sites, ...add.map(x => String(x).trim()).filter(Boolean)]));
+    const saved = await setSiteRegistry(env, merged);
+    return new Response(JSON.stringify({ sites: saved }), { status: 200, headers: { 'content-type': 'application/json' } });
+  }
+  if (request.method === 'DELETE') {
+    const body = await request.json().catch(()=>({}));
+    const remove = Array.isArray(body?.remove) ? body.remove : (body?.site ? [body.site] : []);
+    const set = await getSiteRegistry(env);
+    const next = set.filter(s => !remove.includes(s));
+    const saved = await setSiteRegistry(env, next);
+    return new Response(JSON.stringify({ sites: saved }), { status: 200, headers: { 'content-type': 'application/json' } });
+  }
+  return new Response('Method not allowed', { status: 405 });
+}
+
+/**
+ * Compute hot data age (seconds) from D1 by checking MAX(timestamp) in timeseries_raw.
+ * Returns null if table empty or query fails.
+ */
+async function getHotAgeSeconds(env) {
+  // Prefer Supabase freshness when configured; fallback to D1
+  try {
+    if (env.SUPABASE_URL && (env.SUPABASE_SERVICE_ROLE_KEY || env.SUPABASE_ANON_KEY)) {
+      try {
+        const age = await Supa.getFreshnessAgeSeconds(env);
+        if (age != null) return Math.max(0, age);
+      } catch (e) {
+        console.warn('[ETL] Supabase freshness check failed; falling back to D1:', e?.message || e);
+      }
+    }
+    const row = await env.DB.prepare('SELECT MAX(timestamp) AS max_ts FROM timeseries_raw').first();
+    const maxSec = row?.max_ts || 0;
+    if (!maxSec) return null;
+    const ageSec = Math.floor((Date.now() - (maxSec * 1000)) / 1000);
+    return Math.max(0, ageSec);
+  } catch (e) {
+    console.warn('[ETL] getHotAgeSeconds failed:', e?.message || e);
+    return null;
+  }
 }

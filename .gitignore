@@ -33,3 +33,10 @@ coordination/orchestration/*
 claude-flow
 # Removed Windows wrapper files per user request
 hive-mind-prompt-*.txt
+
+# Local secrets (do not commit)
+.env
+.env.local
+.env.secrets.local
+secrets/.env.secrets.local
+secrets.local.json
