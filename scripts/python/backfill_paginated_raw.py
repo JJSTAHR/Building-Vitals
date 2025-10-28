@@ -86,13 +86,16 @@ def fetch_paginated_window(
     pages = 0
     headers = {"authorization": f"Bearer {ace_token}", "accept": "application/json"}
 
+    # Cap page size conservatively to reduce chunked transfer failures
+    effective_page_size = max(10000, min(int(page_size), 50000))
+
     while True:
         url = f"{ace_base}/sites/{site}/timeseries/paginated"
         params = {
             "start_time": start_iso,
             "end_time": end_iso,
             "raw_data": "true",
-            "page_size": str(page_size),
+            "page_size": str(effective_page_size),
         }
         if cursor:
             params["cursor"] = cursor
@@ -103,7 +106,25 @@ def fetch_paginated_window(
         if time_left <= 2:
             break
 
-        resp = requests.get(url, headers=headers, params=params, timeout=time_left)
+        # Robust fetch with simple retries for chunked encoding/timeouts
+        last_err = None
+        for attempt in range(3):
+            try:
+                resp = requests.get(url, headers=headers, params=params, timeout=time_left)
+                break
+            except requests.exceptions.ChunkedEncodingError as e:
+                last_err = e
+                # On first failure, reduce page size further and retry
+                if effective_page_size > 20000:
+                    effective_page_size = max(10000, effective_page_size // 2)
+                    params["page_size"] = str(effective_page_size)
+                continue
+            except requests.exceptions.RequestException as e:
+                last_err = e
+                continue
+        else:
+            # Exhausted retries
+            raise last_err
         if not resp.ok:
             raise RuntimeError(f"ACE {resp.status_code}: {resp.text[:200]}")
         data = resp.json() if resp.content else {}
