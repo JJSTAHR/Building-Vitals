@@ -1,0 +1,75 @@
+name: Historical Data Backfill
+
+on:
+  workflow_dispatch:
+    inputs:
+      site:
+        description: 'Site name to backfill'
+        required: true
+        default: 'ses_falls_city'
+        type: string
+
+      start_date:
+        description: 'Start date (YYYY-MM-DDTHH:MM:SSZ)'
+        required: true
+        type: string
+        default: '2025-10-01T00:00:00Z'
+
+      end_date:
+        description: 'End date (YYYY-MM-DDTHH:MM:SSZ)'
+        required: true
+        type: string
+        default: '2025-10-31T23:59:59Z'
+
+      chunk_minutes:
+        description: 'Chunk size in minutes'
+        required: false
+        type: number
+        default: 10
+
+jobs:
+  backfill:
+    name: Backfill ${{ inputs.site }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 360  # 6 hours max
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Display backfill configuration
+        run: |
+          echo "🚀 Starting Historical Backfill"
+          echo "================================"
+          echo "Site: ${{ inputs.site }}"
+          echo "Start: ${{ inputs.start_date }}"
+          echo "End: ${{ inputs.end_date }}"
+          echo "Chunk size: ${{ inputs.chunk_minutes }} minutes"
+          echo "================================"
+
+      - name: Run backfill script
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          ACE_API_KEY: ${{ secrets.ACE_API_KEY }}
+          ACE_API_BASE: ${{ secrets.ACE_API_BASE }}
+        run: |
+          node scripts/github-actions-backfill.cjs \
+            --site "${{ inputs.site }}" \
+            --start "${{ inputs.start_date }}" \
+            --end "${{ inputs.end_date }}" \
+            --chunk-minutes ${{ inputs.chunk_minutes }}
+
+      - name: Upload backfill logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backfill-logs-${{ inputs.site }}-${{ github.run_number }}
+          path: |
+            *.log
+          retention-days: 30
