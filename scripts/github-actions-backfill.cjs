@@ -420,6 +420,22 @@ async function backfillDateRange(site, startDate, endDate, chunkMinutes = DEFAUL
 }
 
 // ============================================================================
+// Site Discovery
+// ============================================================================
+
+async function getAllSites() {
+  try {
+    const { data } = await supabaseRequest('/rest/v1/points?select=site_name&limit=1000');
+    const uniqueSites = [...new Set(data.map(p => p.site_name))].filter(s => s);
+    console.log(`🔍 Discovered ${uniqueSites.length} sites: ${uniqueSites.join(', ')}`);
+    return uniqueSites;
+  } catch (error) {
+    console.error('⚠️ Error discovering sites:', error.message);
+    return [];
+  }
+}
+
+// ============================================================================
 // CLI
 // ============================================================================
 
@@ -430,7 +446,9 @@ async function main() {
     const index = args.indexOf(name);
     return index >= 0 ? args[index + 1] : null;
   };
+  const hasFlag = (name) => args.includes(name);
 
+  const allSites = hasFlag('--all-sites');
   const site = getArg('--site') || 'ses_falls_city';
   const startDate = getArg('--start');
   const endDate = getArg('--end');
@@ -456,12 +474,63 @@ async function main() {
     console.error('    --start 2025-10-01T00:00:00Z \\');
     console.error('    --end 2025-10-31T23:59:59Z \\');
     console.error('    --chunk-minutes 10');
+    console.error('\n  Or for all sites:');
+    console.error('    --all-sites --start ... --end ...');
     process.exit(1);
   }
 
   try {
-    const result = await backfillDateRange(site, startDate, endDate, chunkMinutes);
-    process.exit(result.success ? 0 : 1);
+    if (allSites) {
+      // Discover and backfill all sites
+      const sites = await getAllSites();
+
+      if (sites.length === 0) {
+        console.error('⚠️ No sites found in database');
+        process.exit(1);
+      }
+
+      let overallSuccess = true;
+      const results = [];
+
+      for (const discoveredSite of sites) {
+        console.log(`\n${'='.repeat(70)}`);
+        console.log(`🌐 PROCESSING SITE: ${discoveredSite}`);
+        console.log(`${'='.repeat(70)}\n`);
+
+        const result = await backfillDateRange(discoveredSite, startDate, endDate, chunkMinutes);
+        results.push({ site: discoveredSite, ...result });
+
+        if (!result.success) {
+          overallSuccess = false;
+        }
+
+        // Small delay between sites to avoid API rate limits
+        if (discoveredSite !== sites[sites.length - 1]) {
+          console.log('\n⏳ Waiting 10 seconds before next site...\n');
+          await sleep(10000);
+        }
+      }
+
+      // Final summary across all sites
+      console.log(`\n${'='.repeat(70)}`);
+      console.log(`📊 MULTI-SITE BACKFILL SUMMARY`);
+      console.log(`${'='.repeat(70)}`);
+      console.log(`Total sites: ${results.length}`);
+      console.log(`✅ Successful: ${results.filter(r => r.success).length}`);
+      console.log(`❌ Failed: ${results.filter(r => !r.success).length}`);
+      console.log(`\nPer-site results:`);
+      results.forEach(r => {
+        const status = r.success ? '✅' : '❌';
+        console.log(`  ${status} ${r.site}: ${r.totalInserted.toLocaleString()} samples in ${r.totalTime}s`);
+      });
+      console.log(`${'='.repeat(70)}\n`);
+
+      process.exit(overallSuccess ? 0 : 1);
+    } else {
+      // Single site backfill
+      const result = await backfillDateRange(site, startDate, endDate, chunkMinutes);
+      process.exit(result.success ? 0 : 1);
+    }
   } catch (error) {
     console.error('\n💥 Fatal error:', error);
     process.exit(1);
