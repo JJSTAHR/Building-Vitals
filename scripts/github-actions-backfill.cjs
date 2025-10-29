@@ -239,6 +239,49 @@ async function ensurePoints(site, pointNames) {
   return nameToId;
 }
 
+/**
+ * Insert a batch with retry logic and adaptive splitting
+ */
+async function insertBatchWithRetry(batch, maxRetries = 3) {
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    try {
+      await supabaseRequest('/rest/v1/timeseries', 'POST', batch);
+      return batch.length; // Success!
+    } catch (error) {
+      const isTimeout = error.message.includes('statement timeout') || error.message.includes('57014');
+      const isServerError = error.message.includes('HTTP 500') || error.message.includes('HTTP 502');
+
+      // Retry on timeout or server errors
+      if ((isTimeout || isServerError) && attempt < maxRetries - 1) {
+        const delay = 3000 * Math.pow(2, attempt); // 3s, 6s, 12s
+        console.log(`  🔄 Retrying batch (${batch.length} records) in ${delay/1000}s... (attempt ${attempt + 1}/${maxRetries})`);
+        await sleep(delay);
+        continue;
+      }
+
+      // If all retries failed and batch is large enough, split it
+      if ((isTimeout || isServerError) && batch.length > 50) {
+        console.log(`  ⚡ Splitting batch of ${batch.length} into smaller chunks...`);
+        const mid = Math.floor(batch.length / 2);
+        const firstHalf = batch.slice(0, mid);
+        const secondHalf = batch.slice(mid);
+
+        // Recursively insert each half (with only 1 retry to avoid infinite recursion)
+        const inserted1 = await insertBatchWithRetry(firstHalf, 2);
+        await sleep(1000); // Brief pause between halves
+        const inserted2 = await insertBatchWithRetry(secondHalf, 2);
+
+        return inserted1 + inserted2;
+      }
+
+      // For other errors or if we can't split further, log and continue
+      console.error(`  ❌ Batch insert error (${batch.length} records):`, error.message);
+      return 0; // Failed completely
+    }
+  }
+  return 0; // Should never reach here
+}
+
 async function insertTimeseries(site, samples) {
   if (!samples || samples.length === 0) {
     return 0;
@@ -278,19 +321,13 @@ async function insertTimeseries(site, samples) {
     return 0;
   }
 
-  // Batch insert with upsert
+  // Batch insert with retry and adaptive splitting
   let inserted = 0;
 
   for (let i = 0; i < records.length; i += BATCH_SIZE) {
     const batch = records.slice(i, i + BATCH_SIZE);
-
-    try {
-      await supabaseRequest('/rest/v1/timeseries', 'POST', batch);
-      inserted += batch.length;
-    } catch (error) {
-      console.error(`  ❌ Batch insert error:`, error.message);
-      // Continue with next batch
-    }
+    const batchInserted = await insertBatchWithRetry(batch);
+    inserted += batchInserted;
   }
 
   return inserted;
@@ -348,6 +385,7 @@ async function backfillDateRange(site, startDate, endDate, chunkMinutes = DEFAUL
   let totalInserted = 0;
   let successCount = 0;
   let failureCount = 0;
+  const incompleteChunks = []; // Track chunks with data loss
 
   const startTime = Date.now();
 
@@ -363,13 +401,28 @@ async function backfillDateRange(site, startDate, endDate, chunkMinutes = DEFAUL
 
     console.log(`\n[${chunkNum}/${totalChunks}] ${progress}% - ${toISO(currentTime)} to ${toISO(chunkEnd)}`);
 
-    const result = await backfillChunk(site, toISO(currentTime), toISO(chunkEnd));
+    const chunkStartTime = toISO(currentTime);
+    const chunkEndTime = toISO(chunkEnd);
+    const result = await backfillChunk(site, chunkStartTime, chunkEndTime);
 
     if (result.success) {
       successCount++;
       totalFetched += result.fetched;
       totalInserted += result.inserted;
       console.log(`  ✅ Success: ${result.fetched} fetched, ${result.inserted} inserted`);
+
+      // Track incomplete inserts
+      if (result.fetched > result.inserted) {
+        const missing = result.fetched - result.inserted;
+        incompleteChunks.push({
+          start: chunkStartTime,
+          end: chunkEndTime,
+          fetched: result.fetched,
+          inserted: result.inserted,
+          missing: missing
+        });
+        console.log(`  ⚠️  Warning: ${missing} samples not inserted`);
+      }
     } else {
       failureCount++;
       console.log(`  ❌ Failed: ${result.error}`);
@@ -388,6 +441,8 @@ async function backfillDateRange(site, startDate, endDate, chunkMinutes = DEFAUL
 
   // Final summary
   const totalTime = Math.floor((Date.now() - startTime) / 1000);
+  const totalMissing = totalFetched - totalInserted;
+  const completeness = totalFetched > 0 ? ((totalInserted / totalFetched) * 100).toFixed(2) : '100.00';
 
   console.log(`\n${'='.repeat(70)}`);
   console.log(`📊 BACKFILL COMPLETE`);
@@ -399,13 +454,31 @@ async function backfillDateRange(site, startDate, endDate, chunkMinutes = DEFAUL
   console.log(`❌ Failed: ${failureCount}`);
   console.log(`📥 Total fetched: ${totalFetched.toLocaleString()} samples`);
   console.log(`💾 Total inserted: ${totalInserted.toLocaleString()} samples`);
+  console.log(`📊 Data completeness: ${completeness}%`);
+  if (totalMissing > 0) {
+    console.log(`⚠️  Missing samples: ${totalMissing.toLocaleString()} (${((totalMissing / totalFetched) * 100).toFixed(3)}%)`);
+  }
   console.log(`⏱️  Total time: ${totalTime}s (${Math.floor(totalTime / 60)}m ${totalTime % 60}s)`);
   console.log(`${'='.repeat(70)}\n`);
 
-  if (failureCount === 0) {
-    console.log(`🎉 Backfill completed successfully!`);
+  if (failureCount === 0 && incompleteChunks.length === 0) {
+    console.log(`🎉 Backfill completed successfully with 100% data completeness!`);
   } else {
-    console.log(`⚠️  Backfill completed with ${failureCount} failures.`);
+    if (failureCount > 0) {
+      console.log(`⚠️  Backfill completed with ${failureCount} chunk failures.`);
+    }
+    if (incompleteChunks.length > 0) {
+      console.log(`⚠️  ${incompleteChunks.length} chunks had incomplete inserts (retries exhausted).`);
+      console.log(`\n${'='.repeat(70)}`);
+      console.log(`📋 INCOMPLETE CHUNKS (for manual re-run if needed):`);
+      console.log(`${'='.repeat(70)}`);
+      incompleteChunks.forEach((chunk, idx) => {
+        console.log(`${idx + 1}. ${chunk.start} to ${chunk.end}`);
+        console.log(`   Missing: ${chunk.missing}/${chunk.fetched} samples (${((chunk.missing / chunk.fetched) * 100).toFixed(1)}%)`);
+        console.log(`   Re-run: gh workflow run backfill.yml -f site=${site} -f start_date="${chunk.start}" -f end_date="${chunk.end}"`);
+      });
+      console.log(`${'='.repeat(70)}\n`);
+    }
   }
 
   return {
@@ -416,6 +489,7 @@ async function backfillDateRange(site, startDate, endDate, chunkMinutes = DEFAUL
     totalFetched,
     totalInserted,
     totalTime,
+    incompleteChunks: incompleteChunks.length,
   };
 }
 
