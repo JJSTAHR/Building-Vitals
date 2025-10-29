@@ -38,7 +38,7 @@ const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const ACE_API_KEY = process.env.ACE_API_KEY;
 const ACE_API_BASE = process.env.ACE_API_BASE || 'https://flightdeck.aceiot.cloud/api';
 
-const DEFAULT_CHUNK_MINUTES = 10;
+const DEFAULT_CHUNK_MINUTES = 30;  // Increased from 10 for faster backfills (more capacity)
 const DEFAULT_PAGE_SIZE = 10000;
 const MAX_RETRIES = 3;
 const RETRY_DELAY_MS = 5000;
