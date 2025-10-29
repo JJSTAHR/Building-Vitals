@@ -244,6 +244,9 @@ def fetch_window_via_cli(
     env = dict(os.environ)
     # Many CLIs read token from env; provide explicitly
     env["ACE_API_KEY"] = ace_token
+    # Also pass base if provided in environment
+    if os.environ.get("ACE_API_BASE"):
+        env["ACE_API_BASE"] = os.environ.get("ACE_API_BASE")
     try:
         p = subprocess.run(args, capture_output=True, text=True, timeout=timeout_sec, env=env)
         if p.returncode != 0:
@@ -343,7 +346,15 @@ def upsert_timeseries(client: Client, site: str, samples: List[Dict]) -> int:
         ts_iso = iso(datetime.fromtimestamp(ts_ms / 1000, tz=timezone.utc))
         rows.append({"point_id": pid, "ts": ts_iso, "value": val})
 
-    for batch in chunk(rows, 1000):
+    # Deduplicate rows by (point_id, ts) to avoid constraint violations
+    # Keep last value for each unique key
+    deduped = {}
+    for row in rows:
+        key = (row["point_id"], row["ts"])
+        deduped[key] = row  # Overwrites if duplicate
+    unique_rows = list(deduped.values())
+
+    for batch in chunk(unique_rows, 1000):
         client.table("timeseries").upsert(batch, on_conflict="point_id,ts").execute()
         total += len(batch)
 
@@ -400,8 +411,13 @@ def run_backfill(
                 if use_cli:
                     samples = fetch_window_via_cli(site, s_iso, e_iso, ace_token, page_size, list(pn_chunk))
                     # Retry with smaller pages if nothing returned
-                    if not samples:
+            if not samples:
+                        # second CLI attempt with smaller page size, then HTTP fallback
                         samples = fetch_window_via_cli(site, s_iso, e_iso, ace_token, max(5000, int(page_size*0.6)), list(pn_chunk))
+                        if not samples:
+                            samples = fetch_paginated_window(
+                                site, s_iso, e_iso, ace_token, page_size=max(5000, int(page_size*0.6)), point_names=list(pn_chunk)
+                            )
                 else:
                     samples = fetch_paginated_window(
                         site, s_iso, e_iso, ace_token, page_size=page_size, point_names=list(pn_chunk)
