@@ -256,10 +256,20 @@ async function insertTimeseries(site, samples) {
       const pointId = pointMap.get(sample.name);
       if (!pointId) return null;
 
+      // Skip records with null/undefined/invalid values
+      if (sample.value === null || sample.value === undefined) {
+        return null;
+      }
+
+      const numValue = parseFloat(sample.value);
+      if (isNaN(numValue)) {
+        return null;
+      }
+
       return {
         point_id: pointId,
         ts: sample.time,
-        value: parseFloat(sample.value),
+        value: numValue,
       };
     })
     .filter(r => r !== null);
