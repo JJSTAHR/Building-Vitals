@@ -1,25 +1,30 @@
 name: Historical Data Backfill
 
 on:
+  # Daily automatic backfill at 2 AM UTC
+  schedule:
+    - cron: '0 2 * * *'
+
+  # Manual trigger with custom parameters
   workflow_dispatch:
     inputs:
       site:
-        description: 'Site name to backfill'
-        required: true
-        default: 'ses_falls_city'
+        description: 'Site name to backfill (leave empty for all sites)'
+        required: false
         type: string
+        default: ''
 
       start_date:
-        description: 'Start date (YYYY-MM-DDTHH:MM:SSZ)'
-        required: true
+        description: 'Start date (YYYY-MM-DDTHH:MM:SSZ, leave empty for yesterday)'
+        required: false
         type: string
-        default: '2025-10-01T00:00:00Z'
+        default: ''
 
       end_date:
-        description: 'End date (YYYY-MM-DDTHH:MM:SSZ)'
-        required: true
+        description: 'End date (YYYY-MM-DDTHH:MM:SSZ, leave empty for yesterday)'
+        required: false
         type: string
-        default: '2025-10-31T23:59:59Z'
+        default: ''
 
       chunk_minutes:
         description: 'Chunk size in minutes'
@@ -29,9 +34,14 @@ on:
 
 jobs:
   backfill:
-    name: Backfill ${{ inputs.site }}
+    name: Daily Data Backfill
     runs-on: ubuntu-latest
     timeout-minutes: 360  # 6 hours max
+
+    strategy:
+      matrix:
+        site: [ses_falls_city]  # Add more sites here as needed
+      fail-fast: false  # Continue with other sites if one fails
 
     steps:
       - name: Checkout repository
@@ -42,14 +52,33 @@ jobs:
         with:
           node-version: '20'
 
-      - name: Display backfill configuration
+      - name: Calculate date range
+        id: dates
         run: |
+          # Use manual inputs if provided, otherwise default to yesterday
+          if [ -n "${{ inputs.start_date }}" ]; then
+            START="${{ inputs.start_date }}"
+            END="${{ inputs.end_date }}"
+            SITE="${{ inputs.site }}"
+          else
+            # Scheduled run - backfill previous day
+            YESTERDAY=$(date -u -d "yesterday" +%Y-%m-%d)
+            START="${YESTERDAY}T00:00:00Z"
+            END="${YESTERDAY}T23:59:59Z"
+            SITE="${{ matrix.site }}"
+          fi
+
+          echo "site=${SITE}" >> $GITHUB_OUTPUT
+          echo "start=${START}" >> $GITHUB_OUTPUT
+          echo "end=${END}" >> $GITHUB_OUTPUT
+
           echo "🚀 Starting Historical Backfill"
           echo "================================"
-          echo "Site: ${{ inputs.site }}"
-          echo "Start: ${{ inputs.start_date }}"
-          echo "End: ${{ inputs.end_date }}"
-          echo "Chunk size: ${{ inputs.chunk_minutes }} minutes"
+          echo "Site: ${SITE}"
+          echo "Start: ${START}"
+          echo "End: ${END}"
+          echo "Chunk size: ${{ inputs.chunk_minutes || 10 }} minutes"
+          echo "Trigger: ${{ github.event_name }}"
           echo "================================"
 
       - name: Run backfill script
@@ -60,16 +89,16 @@ jobs:
           ACE_API_BASE: ${{ secrets.ACE_API_BASE }}
         run: |
           node scripts/github-actions-backfill.cjs \
-            --site "${{ inputs.site }}" \
-            --start "${{ inputs.start_date }}" \
-            --end "${{ inputs.end_date }}" \
-            --chunk-minutes ${{ inputs.chunk_minutes }}
+            --site "${{ steps.dates.outputs.site }}" \
+            --start "${{ steps.dates.outputs.start }}" \
+            --end "${{ steps.dates.outputs.end }}" \
+            --chunk-minutes ${{ inputs.chunk_minutes || 10 }}
 
       - name: Upload backfill logs
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: backfill-logs-${{ inputs.site }}-${{ github.run_number }}
+          name: backfill-logs-${{ steps.dates.outputs.site }}-${{ github.run_number }}
           path: |
             *.log
           retention-days: 30
