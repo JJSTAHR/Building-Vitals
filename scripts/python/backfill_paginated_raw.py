@@ -411,7 +411,7 @@ def run_backfill(
                 if use_cli:
                     samples = fetch_window_via_cli(site, s_iso, e_iso, ace_token, page_size, list(pn_chunk))
                     # Retry with smaller pages if nothing returned
-            if not samples:
+                    if not samples:
                         # second CLI attempt with smaller page size, then HTTP fallback
                         samples = fetch_window_via_cli(site, s_iso, e_iso, ace_token, max(5000, int(page_size*0.6)), list(pn_chunk))
                         if not samples:
