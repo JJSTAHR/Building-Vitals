@@ -423,16 +423,53 @@ async function backfillDateRange(site, startDate, endDate, chunkMinutes = DEFAUL
 // Site Discovery
 // ============================================================================
 
-async function getAllSites() {
+async function getAllSitesFromACE() {
+  try {
+    // Query ACE IoT API for list of sites
+    const url = `${ACE_API_BASE}/sites`;
+
+    console.log('🔍 Discovering sites from ACE IoT API...');
+
+    const response = await httpsRequest(url, {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${ACE_API_KEY}`,
+        'Accept': 'application/json',
+      },
+    });
+
+    if (response.data && Array.isArray(response.data)) {
+      const siteNames = response.data.map(site => site.name || site.id || site.site_name).filter(s => s);
+      console.log(`🌐 Discovered ${siteNames.length} sites from ACE API: ${siteNames.join(', ')}`);
+      return siteNames;
+    }
+
+    // Fallback: if API doesn't provide site list, use database sites
+    console.log('⚠️ ACE API did not return site list, falling back to database sites');
+    return await getAllSitesFromDatabase();
+  } catch (error) {
+    console.error('⚠️ Error discovering sites from ACE API:', error.message);
+    console.log('📊 Falling back to database sites...');
+    return await getAllSitesFromDatabase();
+  }
+}
+
+async function getAllSitesFromDatabase() {
   try {
     const { data } = await supabaseRequest('/rest/v1/points?select=site_name&limit=1000');
     const uniqueSites = [...new Set(data.map(p => p.site_name))].filter(s => s);
-    console.log(`🔍 Discovered ${uniqueSites.length} sites: ${uniqueSites.join(', ')}`);
+    console.log(`📊 Discovered ${uniqueSites.length} sites from database: ${uniqueSites.join(', ')}`);
     return uniqueSites;
   } catch (error) {
-    console.error('⚠️ Error discovering sites:', error.message);
+    console.error('⚠️ Error discovering sites from database:', error.message);
     return [];
   }
+}
+
+async function getAllSites() {
+  // Primary: Discover from ACE API (catches new sites automatically)
+  // Fallback: Discover from database (for sites already being tracked)
+  return await getAllSitesFromACE();
 }
 
 // ============================================================================
