@@ -95,7 +95,7 @@ jobs:
       ACE_API_KEY: ${{ secrets.ACE_API_KEY }}
       PROXY_URL: https://ace-iot-timeseries-prod.jstahr.workers.dev
       USE_ACE_CLI: "0"
-      ACE_API_BASE: https://ace-iot-timeseries-prod.jstahr.workers.dev/api
+      ACE_API_BASE: https://flightdeck.aceiot.cloud/api
     steps:
       - name: Checkout
         uses: actions/checkout@v4
