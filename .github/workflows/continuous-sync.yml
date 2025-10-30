@@ -43,10 +43,10 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r scripts/python/requirements.txt
 
-      - name: Continuous sync (last 15 minutes)
+      - name: Continuous sync (last 8 minutes only)
         run: |
           NOW_ISO=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-          LOOKBACK="${{ github.event.inputs.lookback_minutes || '15' }}"
+          LOOKBACK="${{ github.event.inputs.lookback_minutes || '8' }}"
           START_ISO=$(date -u -d "$NOW_ISO - $LOOKBACK minutes" +"%Y-%m-%dT%H:%M:%SZ")
 
           echo "Syncing data from $START_ISO to $NOW_ISO"
@@ -56,9 +56,9 @@ jobs:
             --site "ses_falls_city" \
             --start "$START_ISO" \
             --end "$NOW_ISO" \
-            --chunk-minutes 5 \
+            --chunk-minutes 4 \
             --page-size 100000 \
-            --max-chunks 3
+            --max-chunks 2
 
       - name: Verify data freshness
         run: |
