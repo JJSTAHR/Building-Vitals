@@ -6,11 +6,11 @@ on:
       chunk_minutes:
         description: "Chunk size in minutes"
         required: true
-        default: "120"
+        default: "30"
       page_size:
         description: "ACE API page size (max: 500000)"
         required: true
-        default: "500000"
+        default: "50000"
 
 concurrency:
   group: parallel-october-backfill-${{ github.run_id }}
@@ -86,16 +86,16 @@ jobs:
           echo "================================================"
           echo "Processing: ${{ matrix.date_range.name }}"
           echo "Date Range: ${{ matrix.date_range.start }} → ${{ matrix.date_range.end }}"
-          echo "Chunk Size: ${{ github.event.inputs.chunk_minutes || '120' }} minutes"
-          echo "Page Size: ${{ github.event.inputs.page_size || '500000' }} records"
+          echo "Chunk Size: ${{ github.event.inputs.chunk_minutes || '30' }} minutes"
+          echo "Page Size: ${{ github.event.inputs.page_size || '50000' }} records"
           echo "================================================"
 
           python scripts/python/backfill_paginated_raw.py \
             --site ses_falls_city \
             --start "${{ matrix.date_range.start }}" \
             --end "${{ matrix.date_range.end }}" \
-            --chunk-minutes "${{ github.event.inputs.chunk_minutes || '120' }}" \
-            --page-size "${{ github.event.inputs.page_size || '500000' }}" \
+            --chunk-minutes "${{ github.event.inputs.chunk_minutes || '30' }}" \
+            --page-size "${{ github.event.inputs.page_size || '50000' }}" \
             --max-chunks 9999 \
             2>&1 | tee backfill-${{ matrix.date_range.name }}.log
 
@@ -114,8 +114,8 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "- **Date Range**: ${{ matrix.date_range.start }} → ${{ matrix.date_range.end }}" >> $GITHUB_STEP_SUMMARY
           echo "- **Status**: ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
-          echo "- **Chunk Size**: ${{ github.event.inputs.chunk_minutes || '120' }} minutes" >> $GITHUB_STEP_SUMMARY
-          echo "- **Page Size**: ${{ github.event.inputs.page_size || '500000' }} records" >> $GITHUB_STEP_SUMMARY
+          echo "- **Chunk Size**: ${{ github.event.inputs.chunk_minutes || '30' }} minutes" >> $GITHUB_STEP_SUMMARY
+          echo "- **Page Size**: ${{ github.event.inputs.page_size || '50000' }} records" >> $GITHUB_STEP_SUMMARY
 
           # Extract final stats from log
           if [ -f "backfill-${{ matrix.date_range.name }}.log" ]; then
