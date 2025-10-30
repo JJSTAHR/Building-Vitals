@@ -1,0 +1,85 @@
+name: Continuous Data Sync (Keep Fresh)
+
+on:
+  schedule:
+    # Run every 5 minutes to keep data fresh
+    - cron: '*/5 * * * *'
+  workflow_dispatch:
+    inputs:
+      lookback_minutes:
+        description: "How far back to sync (minutes)"
+        required: true
+        default: "15"
+
+# Prevent overlapping sync runs
+concurrency:
+  group: continuous-sync
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 4  # Must finish before next 5-min cycle
+    env:
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+      ACE_API_KEY: ${{ secrets.ACE_API_KEY }}
+      ACE_API_BASE: https://flightdeck.aceiot.cloud/api
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r scripts/python/requirements.txt
+
+      - name: Continuous sync (last 15 minutes)
+        run: |
+          NOW_ISO=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+          LOOKBACK="${{ github.event.inputs.lookback_minutes || '15' }}"
+          START_ISO=$(date -u -d "$NOW_ISO - $LOOKBACK minutes" +"%Y-%m-%dT%H:%M:%SZ")
+
+          echo "Syncing data from $START_ISO to $NOW_ISO"
+
+          # Sync for ses_falls_city site (add more sites as needed)
+          python scripts/python/backfill_paginated_raw.py \
+            --site "ses_falls_city" \
+            --start "$START_ISO" \
+            --end "$NOW_ISO" \
+            --chunk-minutes 5 \
+            --page-size 100000 \
+            --max-chunks 3
+
+      - name: Verify data freshness
+        run: |
+          # Query Supabase to check latest timestamp
+          RESPONSE=$(curl -sS "$SUPABASE_URL/rest/v1/timeseries?select=ts&order=ts.desc&limit=1" \
+            -H "apikey: $SUPABASE_SERVICE_ROLE_KEY" \
+            -H "Authorization: Bearer $SUPABASE_SERVICE_ROLE_KEY")
+
+          echo "Latest timestamp in database:"
+          echo "$RESPONSE" | jq -r '.[0].ts'
+
+          # Calculate age in minutes
+          LATEST=$(echo "$RESPONSE" | jq -r '.[0].ts')
+          if [ -n "$LATEST" ]; then
+            AGE_SEC=$(( $(date -u +%s) - $(date -u -d "$LATEST" +%s) ))
+            AGE_MIN=$(( AGE_SEC / 60 ))
+            echo "Data age: $AGE_MIN minutes"
+
+            if [ $AGE_MIN -gt 10 ]; then
+              echo "⚠️ WARNING: Data is $AGE_MIN minutes old (expected <10 min)"
+            else
+              echo "✅ Data is fresh ($AGE_MIN minutes old)"
+            fi
+          fi
