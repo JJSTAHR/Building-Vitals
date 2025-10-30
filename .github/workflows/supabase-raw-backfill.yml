@@ -2,7 +2,7 @@ name: Supabase RAW Backfill (Paginated)
 
 on:
   schedule:
-    - cron: '* * * * *'  # every minute tail-fill + deep backfill (all sites)
+    - cron: '0 2 * * *'  # daily at 2 AM UTC - fetches previous day's data (all sites)
   workflow_dispatch:
     inputs:
       site:
@@ -129,9 +129,25 @@ jobs:
             -H "Authorization: Bearer $ACE_API_KEY" \
             --data "$body" || true
 
-      - name: Near-now RAW tail-fill (per site)
+      - name: Daily full-day backfill (previous 24 hours)
+        if: ${{ github.event_name == 'schedule' }}
         run: |
-          # Tail-fill last 120 minutes up to now for freshness
+          # Daily scheduled run: backfill full previous day (24 hours)
+          YESTERDAY=$(date -u -d "yesterday" +"%Y-%m-%d")
+          START="${YESTERDAY}T00:00:00Z"
+          END="${YESTERDAY}T23:59:59Z"
+          python scripts/python/backfill_paginated_raw.py \
+            --site "${{ matrix.site }}" \
+            --start "$START" \
+            --end "$END" \
+            --chunk-minutes 30 \
+            --page-size 100000 \
+            --max-chunks 60
+
+      - name: Near-now RAW tail-fill (per site)
+        if: ${{ github.event_name != 'schedule' }}
+        run: |
+          # Manual trigger: Tail-fill last 180 minutes up to now for freshness
           NOW_ISO=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
           TAIL_START=$(date -u -d "$NOW_ISO - 180 minutes" +"%Y-%m-%dT%H:%M:%SZ")
           python scripts/python/backfill_paginated_raw.py \
@@ -143,7 +159,7 @@ jobs:
             --max-chunks "${{ github.event.inputs.max_chunks || '12' }}"
 
       - name: Deep RAW backfill to Jan 1 (per site)
-        if: ${{ github.event_name != 'schedule' }}
+        if: ${{ github.event_name == 'workflow_dispatch' }}
         run: |
           END_ARG=""
           if [ -n "${{ github.event.inputs.end_iso }}" ]; then END_ARG="--end \"${{ github.event.inputs.end_iso }}\""; fi
