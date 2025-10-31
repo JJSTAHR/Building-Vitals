@@ -14,9 +14,9 @@ python scripts\python\backfill_paginated_raw.py ^
   --site ses_falls_city ^
   --start 2025-10-01T00:00:00Z ^
   --end 2025-11-01T00:00:00Z ^
-  --chunk-minutes 1440 ^
+  --chunk-minutes 360 ^
   --page-size 10000 ^
-  --max-chunks 100
+  --max-chunks 250
 
 echo.
 echo Backfill complete - check output above for results
