@@ -58,7 +58,10 @@ def fetch_all_configured_points(site: str, ace_token: str, ace_base: str) -> Lis
 
             print(f"[ConfiguredPoints] Pagination: page {page}/{total_pages}, total items: {total_items}")
 
-            if page >= total_pages or len(items) < per_page:
+            # Don't trust total_pages from API (unreliable with large per_page)
+            # Keep fetching until we get a partial page or empty response
+            if len(items) < per_page:
+                print(f"[ConfiguredPoints] Got partial page ({len(items)} < {per_page}), stopping")
                 break
 
             page += 1
