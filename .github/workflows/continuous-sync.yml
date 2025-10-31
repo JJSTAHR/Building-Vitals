@@ -43,10 +43,15 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r scripts/python/requirements.txt
 
-      - name: Continuous sync (last 8 minutes only)
+      - name: Auto-discover new points (future-proof)
+        run: |
+          echo "Discovering new configured points from ACE API..."
+          python scripts/python/seed_configured_points.py --site "ses_falls_city" || true
+
+      - name: Continuous sync (last 24 hours for full daily coverage)
         run: |
           NOW_ISO=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-          LOOKBACK="${{ github.event.inputs.lookback_minutes || '8' }}"
+          LOOKBACK="${{ github.event.inputs.lookback_minutes || '1440' }}"
           START_ISO=$(date -u -d "$NOW_ISO - $LOOKBACK minutes" +"%Y-%m-%dT%H:%M:%SZ")
 
           echo "Syncing data from $START_ISO to $NOW_ISO"
@@ -56,9 +61,9 @@ jobs:
             --site "ses_falls_city" \
             --start "$START_ISO" \
             --end "$NOW_ISO" \
-            --chunk-minutes 4 \
-            --page-size 100000 \
-            --max-chunks 2
+            --chunk-minutes 30 \
+            --page-size 50000 \
+            --max-chunks 100
 
       - name: Verify data freshness
         run: |
