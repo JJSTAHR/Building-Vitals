@@ -65,7 +65,7 @@ jobs:
             --page-size 50000 \
             --max-chunks 100
 
-      - name: Verify data freshness
+      - name: Verify data freshness and point coverage
         run: |
           # Query Supabase to check latest timestamp
           RESPONSE=$(curl -sS "$SUPABASE_URL/rest/v1/timeseries?select=ts&order=ts.desc&limit=1" \
@@ -83,8 +83,26 @@ jobs:
             echo "Data age: $AGE_MIN minutes"
 
             if [ $AGE_MIN -gt 10 ]; then
-              echo "⚠️ WARNING: Data is $AGE_MIN minutes old (expected <10 min)"
+              echo "❌ CRITICAL: Data is $AGE_MIN minutes old (expected <5 min)"
+              exit 1
+            elif [ $AGE_MIN -gt 5 ]; then
+              echo "⚠️ WARNING: Data is $AGE_MIN minutes old (target: <5 min)"
             else
-              echo "✅ Data is fresh ($AGE_MIN minutes old)"
+              echo "✅ EXCELLENT: Data is fresh ($AGE_MIN minutes old)"
             fi
           fi
+
+          # Check point coverage in last 15 minutes
+          echo ""
+          echo "Checking point coverage (last 15 minutes)..."
+          FIFTEEN_MIN_AGO=$(date -u -d "15 minutes ago" +"%Y-%m-%dT%H:%M:%SZ")
+
+          COVERAGE_RESPONSE=$(curl -sS "$SUPABASE_URL/rest/v1/timeseries?select=point_id&ts=gte.$FIFTEEN_MIN_AGO&limit=50000" \
+            -H "apikey: $SUPABASE_SERVICE_ROLE_KEY" \
+            -H "Authorization: Bearer $SUPABASE_SERVICE_ROLE_KEY")
+
+          UNIQUE_POINTS=$(echo "$COVERAGE_RESPONSE" | jq '[.[].point_id] | unique | length')
+          echo "Unique points with recent data: $UNIQUE_POINTS out of 7,327 configured"
+
+          COVERAGE_PCT=$(echo "scale=1; $UNIQUE_POINTS * 100 / 7327" | bc)
+          echo "Coverage: ${COVERAGE_PCT}%"
