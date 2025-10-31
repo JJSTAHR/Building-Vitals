@@ -69,7 +69,7 @@ def fetch_all_configured_point_names(site: str, ace_token: str, ace_base: str) -
             print(f"   Error on page {page}: {e}", file=sys.stderr)
             break
 
-    print(f"   ✓ Total: {len(points)} configured points")
+    print(f"   OK Total: {len(points)} configured points")
     print()
     return points
 
@@ -276,17 +276,17 @@ def main():
 
     total_samples = len(all_samples)
     print()
-    print(f"   ✓ Fetched {total_samples} total samples")
-    print(f"   ✓ {len(points_with_data)} points have data ({(len(points_with_data)/len(all_points)*100):.1f}%)")
+    print(f"   OK Fetched {total_samples} total samples")
+    print(f"   OK {len(points_with_data)} points have data ({(len(points_with_data)/len(all_points)*100):.1f}%)")
     print()
 
     # Upsert to Supabase
     print(f"[3/4] Upserting {total_samples} samples to Supabase...")
     if total_samples > 0:
         inserted = upsert_samples_to_supabase(client, args.site, all_samples, batch_size=1000)
-        print(f"   ✓ Upserted {inserted} samples to Supabase")
+        print(f"   OK Upserted {inserted} samples to Supabase")
     else:
-        print(f"   ⚠️  No samples to upsert")
+        print(f"   WARNING: No samples to upsert")
     print()
 
     # Summary
@@ -299,9 +299,9 @@ def main():
 
     if len(points_with_data) < len(all_points) * 0.9:
         missing = len(all_points) - len(points_with_data)
-        print(f"   ⚠️  {missing} points have NO October data in ACE API")
+        print(f"   WARNING: {missing} points have NO October data in ACE API")
     else:
-        print(f"   ✓ Excellent coverage!")
+        print(f"   OK Excellent coverage!")
 
     print()
     print("=" * 80)
