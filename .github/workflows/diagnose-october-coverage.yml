@@ -1,0 +1,49 @@
+name: Diagnose October Coverage (True ACE API Availability)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      ACE_API_KEY: ${{ secrets.ACE_API_KEY }}
+      ACE_API_BASE: https://flightdeck.aceiot.cloud/api
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r scripts/python/requirements.txt
+
+      - name: Run diagnostic
+        run: |
+          python scripts/python/diagnose_october_coverage.py 2>&1 | tee october-diagnostic.log
+
+      - name: Upload diagnostic results
+        uses: actions/upload-artifact@v4
+        with:
+          name: october-diagnostic-results
+          path: october-diagnostic.log
+          retention-days: 30
+
+      - name: Summary
+        run: |
+          echo "## October Coverage Diagnostic Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "This diagnostic fetches ALL October data from ACE API to determine" >> $GITHUB_STEP_SUMMARY
+          echo "true data availability vs system limitations." >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          tail -30 october-diagnostic.log >> $GITHUB_STEP_SUMMARY
