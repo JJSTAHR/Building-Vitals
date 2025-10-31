@@ -479,15 +479,20 @@ def run_backfill(
 
     print(f"\n[2/3] Fetching data from ACE API...")
 
+    chunk_num = 0
     while processed < max_chunks and window_end > start_dt:
+        chunk_num += 1
         window_start = max(start_dt, window_end - window_delta)
         s_iso = iso(window_start)
         e_iso = iso(window_end)
-        print(f"[Backfill] {site} {s_iso} -> {e_iso}")
+
+        window_start_time = time.time()
+        print(f"\n   Chunk {chunk_num}/{max_chunks}: {s_iso} -> {e_iso}")
 
         # Prefer point-chunked fetch to keep payload sizes small
         point_names = get_point_names_from_supabase(client, site)
         total_window_samples = 0
+        window_points = set()
         if point_names:
             for pn_chunk in chunk(point_names, 300):
                 use_cli = os.environ.get("USE_ACE_CLI", "0") == "1"
@@ -506,20 +511,38 @@ def run_backfill(
                         site, s_iso, e_iso, ace_token, page_size=page_size, point_names=list(pn_chunk)
                     )
                 if samples:
+                    # Track unique points
+                    for s in samples:
+                        if s.get("point_name"):
+                            window_points.add(s["point_name"])
+                            total_points_discovered.add(s["point_name"])
+
                     ins = upsert_timeseries(client, site, samples, point_cache)
                     inserted += ins
                     total_window_samples += len(samples)
+                    total_samples_fetched += len(samples)
         else:
             # Fallback to site-wide fetch if no names cached in Supabase
             samples = fetch_paginated_window(
                 site, s_iso, e_iso, ace_token, page_size=page_size
             )
             if samples:
+                # Track unique points
+                for s in samples:
+                    if s.get("point_name"):
+                        window_points.add(s["point_name"])
+                        total_points_discovered.add(s["point_name"])
+
                 ins = upsert_timeseries(client, site, samples, point_cache)
                 inserted += ins
                 total_window_samples = len(samples)
+                total_samples_fetched += len(samples)
 
-        print(f"  - fetched={total_window_samples} inserted={inserted}")
+        window_time = time.time() - window_start_time
+        elapsed = time.time() - start_time
+
+        print(f"      --> Chunk complete: {total_window_samples} samples, {len(window_points)} unique points ({window_time:.1f}s)")
+        print(f"      --> Total progress: {total_samples_fetched} samples, {len(total_points_discovered)} points, {inserted} inserted ({elapsed:.1f}s elapsed)")
 
         processed += 1
         window_end = window_start
