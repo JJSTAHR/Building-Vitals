@@ -171,6 +171,19 @@ def fetch_paginated_window(
         else:
             raise last_err
         rows = data.get("point_samples") or []
+
+        # Track empty pages to avoid infinite loops on bad cursors
+        if not rows:
+            # Empty page - check if this is the end or a cursor issue
+            cursor = data.get("next_cursor") or None
+            if not cursor:
+                break  # No more data
+            # If cursor exists but no data, try one more time then stop
+            pages += 1
+            if pages > 200:
+                break
+            continue  # Try next cursor
+
         for r in rows:
             name = r.get("name") or r.get("point") or r.get("point_name")
             t = r.get("time") or r.get("timestamp") or r.get("ts")
@@ -294,48 +307,86 @@ def fetch_window_via_cli(
         return []
 
 
-def upsert_points(client: Client, site: str, names: List[str]) -> Dict[str, int]:
-    names = sorted(set([n for n in names if n]))
-    if not names:
-        return {}
-
-    # Upsert all names for the site
-    rows = [{"site_name": site, "name": n} for n in names]
-    # on_conflict => unique(site_name,name)
-    client.table("points").upsert(rows, on_conflict="site_name,name").execute()
-
-    # Fetch ids back in manageable chunks
+def load_all_point_ids(client: Client, site: str) -> Dict[str, int]:
+    """Pre-load ALL existing point IDs for the site to avoid repeated upserts"""
     name_to_id: Dict[str, int] = {}
-    for batch in chunk(names, 100):
+    offset = 0
+    batch_size = 1000
+
+    while True:
         res = (
             client.table("points")
             .select("id,name")
             .eq("site_name", site)
-            .in_("name", batch)
+            .range(offset, offset + batch_size - 1)
             .execute()
         )
-        for r in res.data or []:
-            name_to_id[r["name"]] = int(r["id"])  # type: ignore
+        if not res.data:
+            break
+        for r in res.data:
+            name_to_id[r["name"]] = int(r["id"])
+        if len(res.data) < batch_size:
+            break
+        offset += batch_size
 
     return name_to_id
 
 
-def upsert_timeseries(client: Client, site: str, samples: List[Dict]) -> int:
+def upsert_points(client: Client, site: str, names: List[str], point_cache: Dict[str, int]) -> Dict[str, int]:
+    """Insert only NEW points, use cache for existing ones. Avoids expensive upserts."""
+    names = sorted(set([n for n in names if n]))
+    if not names:
+        return {}
+
+    # Identify which points are new (not in cache)
+    new_names = [n for n in names if n not in point_cache]
+
+    if new_names:
+        # Insert new points in small batches
+        rows = [{"site_name": site, "name": n} for n in new_names]
+        for batch_rows in chunk(rows, 50):
+            try:
+                # Use insert instead of upsert - faster and won't timeout
+                # If duplicate, the DB will reject it and we'll fetch the ID
+                client.table("points").insert(batch_rows).execute()
+            except Exception:
+                # Conflict means point already exists, will fetch ID below
+                pass
+
+        # Fetch IDs for the new points we just inserted
+        for batch in chunk(new_names, 100):
+            res = (
+                client.table("points")
+                .select("id,name")
+                .eq("site_name", site)
+                .in_("name", batch)
+                .execute()
+            )
+            for r in res.data or []:
+                point_cache[r["name"]] = int(r["id"])
+
+    # Return IDs for requested names (from cache)
+    return {n: point_cache[n] for n in names if n in point_cache}
+
+
+def upsert_timeseries(client: Client, site: str, samples: List[Dict], point_cache: Dict[str, int]) -> int:
+    """Insert timeseries data using pre-loaded point cache. Uses INSERT for speed."""
     if not samples:
         return 0
-    # Map names to ids
-    names = list({s["point_name"] for s in samples if s.get("point_name")})
-    map_ids = upsert_points(client, site, names)
 
-    # Prepare rows and batch upsert on (point_id,ts)
+    # Map names to ids using cache
+    names = list({s["point_name"] for s in samples if s.get("point_name")})
+    map_ids = upsert_points(client, site, names, point_cache)
+
+    # Prepare rows
     total = 0
     rows = []
     for s in samples:
         pid = map_ids.get(s["point_name"])  # type: ignore
         ts_ms = int(s["timestamp"])  # milliseconds
-        # Double-guard: filter non-finite values here as well (NaN/Inf)
+        # Filter non-finite values (NaN/Inf)
         try:
-            val = float(s["value"])  # double precision
+            val = float(s["value"])
         except Exception:
             continue
         if not math.isfinite(val):
@@ -346,17 +397,28 @@ def upsert_timeseries(client: Client, site: str, samples: List[Dict]) -> int:
         ts_iso = iso(datetime.fromtimestamp(ts_ms / 1000, tz=timezone.utc))
         rows.append({"point_id": pid, "ts": ts_iso, "value": val})
 
-    # Deduplicate rows by (point_id, ts) to avoid constraint violations
-    # Keep last value for each unique key
+    # Deduplicate rows by (point_id, ts)
     deduped = {}
     for row in rows:
         key = (row["point_id"], row["ts"])
-        deduped[key] = row  # Overwrites if duplicate
+        deduped[key] = row
     unique_rows = list(deduped.values())
 
-    for batch in chunk(unique_rows, 1000):
-        client.table("timeseries").upsert(batch, on_conflict="point_id,ts").execute()
-        total += len(batch)
+    # Use INSERT with larger batches (50) - faster than upsert, conflicts are ignored
+    for batch in chunk(unique_rows, 50):
+        try:
+            # Try insert - faster than upsert
+            client.table("timeseries").insert(batch).execute()
+            total += len(batch)
+        except Exception:
+            # If conflict (duplicate data), try upsert with smaller batch
+            for mini_batch in chunk(batch, 10):
+                try:
+                    client.table("timeseries").upsert(mini_batch, on_conflict="point_id,ts").execute()
+                    total += len(mini_batch)
+                except Exception:
+                    # Skip this batch if still failing
+                    pass
 
     return total
 
@@ -393,6 +455,11 @@ def run_backfill(
     processed = 0
     inserted = 0
 
+    # Pre-load ALL existing point IDs for this site to avoid expensive upserts
+    print(f"[Cache] Pre-loading existing point IDs for {site}...")
+    point_cache = load_all_point_ids(client, site)
+    print(f"[Cache] Loaded {len(point_cache)} existing points into memory")
+
     window_end = end_dt
     window_delta = timedelta(minutes=chunk_minutes)
 
@@ -423,7 +490,7 @@ def run_backfill(
                         site, s_iso, e_iso, ace_token, page_size=page_size, point_names=list(pn_chunk)
                     )
                 if samples:
-                    ins = upsert_timeseries(client, site, samples)
+                    ins = upsert_timeseries(client, site, samples, point_cache)
                     inserted += ins
                     total_window_samples += len(samples)
         else:
@@ -432,7 +499,7 @@ def run_backfill(
                 site, s_iso, e_iso, ace_token, page_size=page_size
             )
             if samples:
-                ins = upsert_timeseries(client, site, samples)
+                ins = upsert_timeseries(client, site, samples, point_cache)
                 inserted += ins
                 total_window_samples = len(samples)
 
