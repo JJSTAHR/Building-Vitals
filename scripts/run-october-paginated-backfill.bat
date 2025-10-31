@@ -39,7 +39,7 @@ python scripts\python\backfill_paginated_raw.py ^
   --start 2025-10-01T00:00:00Z ^
   --end 2025-11-01T00:00:00Z ^
   --chunk-minutes 1440 ^
-  --page-size 50000 ^
+  --page-size 10000 ^
   --max-chunks 100 ^
   2>&1 | C:\Windows\System32\find /V ""
 
