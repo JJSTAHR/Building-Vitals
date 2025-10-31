@@ -454,14 +454,30 @@ def run_backfill(
 ) -> Tuple[int, int]:
     processed = 0
     inserted = 0
+    total_samples_fetched = 0
+    total_points_discovered = set()
+    start_time = time.time()
 
     # Pre-load ALL existing point IDs for this site to avoid expensive upserts
-    print(f"[Cache] Pre-loading existing point IDs for {site}...")
+    print(f"\n{'='*80}")
+    print(f"BACKFILL STARTING - {site}")
+    print(f"{'='*80}")
+    print(f"Time range: {start_dt.isoformat()} -> {end_dt.isoformat()}")
+    print(f"Chunk size: {chunk_minutes} minutes")
+    print(f"Max chunks: {max_chunks}")
+    print(f"Page size: {page_size}")
+    print(f"{'='*80}\n")
+
+    print(f"[1/3] Pre-loading existing point IDs for {site}...")
+    cache_start = time.time()
     point_cache = load_all_point_ids(client, site)
-    print(f"[Cache] Loaded {len(point_cache)} existing points into memory")
+    cache_time = time.time() - cache_start
+    print(f"      OK Loaded {len(point_cache)} existing points ({cache_time:.1f}s)")
 
     window_end = end_dt
     window_delta = timedelta(minutes=chunk_minutes)
+
+    print(f"\n[2/3] Fetching data from ACE API...")
 
     while processed < max_chunks and window_end > start_dt:
         window_start = max(start_dt, window_end - window_delta)
@@ -514,6 +530,21 @@ def run_backfill(
             set_ingest_cursor(client, site, iso(window_end))
         except Exception as e:
             print(f"[State] failed to update cursor: {e}", file=sys.stderr)
+
+    total_time = time.time() - start_time
+
+    print(f"\n[3/3] Backfill complete!")
+    print(f"\n{'='*80}")
+    print(f"BACKFILL SUMMARY")
+    print(f"{'='*80}")
+    print(f"Total time:           {total_time:.1f}s ({total_time/60:.1f} minutes)")
+    print(f"Chunks processed:     {processed}/{max_chunks}")
+    print(f"Samples fetched:      {total_samples_fetched}")
+    print(f"Samples inserted:     {inserted}")
+    print(f"Unique points:        {len(total_points_discovered)}")
+    print(f"Insert efficiency:    {(inserted/total_samples_fetched*100):.1f}%" if total_samples_fetched > 0 else "N/A")
+    print(f"Throughput:           {total_samples_fetched/total_time:.0f} samples/sec" if total_time > 0 else "N/A")
+    print(f"{'='*80}\n")
 
     return processed, inserted
 
