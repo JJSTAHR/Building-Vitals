@@ -48,10 +48,10 @@ jobs:
           echo "Discovering new configured points from ACE API..."
           python scripts/python/seed_configured_points.py --site "ses_falls_city" || true
 
-      - name: Continuous sync (last 24 hours for full daily coverage)
+      - name: Continuous sync (last 15 minutes for real-time freshness)
         run: |
           NOW_ISO=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-          LOOKBACK="${{ github.event.inputs.lookback_minutes || '1440' }}"
+          LOOKBACK="${{ github.event.inputs.lookback_minutes || '15' }}"
           START_ISO=$(date -u -d "$NOW_ISO - $LOOKBACK minutes" +"%Y-%m-%dT%H:%M:%SZ")
 
           echo "Syncing data from $START_ISO to $NOW_ISO"
