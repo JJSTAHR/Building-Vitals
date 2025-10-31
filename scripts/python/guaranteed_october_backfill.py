@@ -242,7 +242,7 @@ def main():
     print(f"[2/4] Fetching data for {len(all_points)} points in batches of {args.batch_size}...")
     print()
 
-    total_samples = 0
+    all_samples = []
     points_with_data = set()
     num_batches = (len(all_points) + args.batch_size - 1) // args.batch_size
 
@@ -263,15 +263,18 @@ def main():
             sys.exit(1)
 
         if samples:
+            # Collect samples for upsert
+            all_samples.extend(samples)
+
             # Track which points have data
             for s in samples:
                 points_with_data.add(s["point_name"])
 
-            total_samples += len(samples)
             print(f"   → Got {len(samples)} samples ({len(points_with_data)} points with data so far)")
 
         time.sleep(0.1)  # Rate limiting
 
+    total_samples = len(all_samples)
     print()
     print(f"   ✓ Fetched {total_samples} total samples")
     print(f"   ✓ {len(points_with_data)} points have data ({(len(points_with_data)/len(all_points)*100):.1f}%)")
@@ -279,7 +282,11 @@ def main():
 
     # Upsert to Supabase
     print(f"[3/4] Upserting {total_samples} samples to Supabase...")
-    # TODO: Collect all samples and upsert
+    if total_samples > 0:
+        inserted = upsert_samples_to_supabase(client, args.site, all_samples, batch_size=1000)
+        print(f"   ✓ Upserted {inserted} samples to Supabase")
+    else:
+        print(f"   ⚠️  No samples to upsert")
     print()
 
     # Summary
