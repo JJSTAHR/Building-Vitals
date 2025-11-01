@@ -144,11 +144,13 @@ def fetch_paginated_window(
             break
 
         # Robust fetch+parse with retries; downsize page + backoff on failures
+        # Use fixed 60s timeout per request, but respect overall budget
+        request_timeout = min(60, time_left)
         last_err = None
         data = {}
         for attempt in range(4):
             try:
-                resp = session.get(url, params=params, timeout=time_left, stream=True)
+                resp = session.get(url, params=params, timeout=request_timeout, stream=True)
                 if not resp.ok:
                     raise RuntimeError(f"ACE {resp.status_code}: {resp.text[:200]}")
                 buf = bytearray()
@@ -404,21 +406,28 @@ def upsert_timeseries(client: Client, site: str, samples: List[Dict], point_cach
         deduped[key] = row
     unique_rows = list(deduped.values())
 
-    # Use INSERT with larger batches (50) - faster than upsert, conflicts are ignored
-    for batch in chunk(unique_rows, 50):
+    # Use INSERT with large batches (500) - much faster
+    for batch in chunk(unique_rows, 500):
         try:
-            # Try insert - faster than upsert
+            # Try insert - fastest path for new data
             client.table("timeseries").insert(batch).execute()
             total += len(batch)
         except Exception:
-            # If conflict (duplicate data), try upsert with smaller batch
-            for mini_batch in chunk(batch, 10):
+            # If conflict (duplicate data), try upsert with larger batch (200)
+            # This is critical for continuous sync where most data overlaps
+            for mini_batch in chunk(batch, 200):
                 try:
                     client.table("timeseries").upsert(mini_batch, on_conflict="point_id,ts").execute()
                     total += len(mini_batch)
-                except Exception:
-                    # Skip this batch if still failing
-                    pass
+                except Exception as e:
+                    # If still failing, go smaller but not tiny (50 instead of 10)
+                    for tiny_batch in chunk(mini_batch, 50):
+                        try:
+                            client.table("timeseries").upsert(tiny_batch, on_conflict="point_id,ts").execute()
+                            total += len(tiny_batch)
+                        except Exception:
+                            # Skip this batch if still failing - likely constraint violation
+                            pass
 
     return total
 
