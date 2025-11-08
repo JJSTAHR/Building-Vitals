@@ -30,7 +30,7 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Backfill data by day
+      - name: Backfill data in 2-hour chunks
         env:
           FLIGHTDECK_TOKEN: ${{ secrets.FLIGHTDECK_TOKEN }}
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
@@ -38,42 +38,49 @@ jobs:
           SITE_ID: ses_falls_city
         run: |
           echo "🚀 Starting backfill from ${{ inputs.start_date }} to ${{ inputs.end_date }}"
+          echo "📦 Processing in 2-hour chunks to handle large data volumes"
 
-          # Convert dates to Unix timestamps
-          START_TS=$(date -d "${{ inputs.start_date }}" +%s)
-          END_TS=$(date -d "${{ inputs.end_date }}" +%s)
+          # Convert dates to Unix timestamps (start of day)
+          START_TS=$(date -d "${{ inputs.start_date }} 00:00:00" +%s)
+          END_TS=$(date -d "${{ inputs.end_date }} 23:59:59" +%s)
 
-          # Loop through each day
+          # 2-hour chunks (7200 seconds)
+          CHUNK_SIZE=7200
           CURRENT_TS=$START_TS
-          DAY_COUNT=0
+          CHUNK_COUNT=0
 
           while [ $CURRENT_TS -le $END_TS ]; do
-            DAY_COUNT=$((DAY_COUNT + 1))
-            CURRENT_DATE=$(date -u -d "@$CURRENT_TS" +%Y-%m-%d)
+            CHUNK_COUNT=$((CHUNK_COUNT + 1))
 
-            # Full day range (00:00:00 to 23:59:59)
-            DAY_START="${CURRENT_DATE}T00:00:00Z"
-            DAY_END="${CURRENT_DATE}T23:59:59Z"
+            # Calculate chunk end time
+            CHUNK_END_TS=$((CURRENT_TS + CHUNK_SIZE))
+            if [ $CHUNK_END_TS -gt $END_TS ]; then
+              CHUNK_END_TS=$END_TS
+            fi
+
+            # Convert to ISO format
+            CHUNK_START=$(date -u -d "@$CURRENT_TS" +%Y-%m-%dT%H:%M:%SZ)
+            CHUNK_END=$(date -u -d "@$CHUNK_END_TS" +%Y-%m-%dT%H:%M:%SZ)
 
             echo ""
             echo "=========================================="
-            echo "Day $DAY_COUNT: $CURRENT_DATE"
+            echo "Chunk $CHUNK_COUNT: $CHUNK_START to $CHUNK_END"
             echo "=========================================="
 
-            # Run sync for this day
-            node scripts/sync-to-supabase.js "$DAY_START" "$DAY_END"
+            # Run sync for this chunk
+            node scripts/sync-to-supabase.js "$CHUNK_START" "$CHUNK_END"
 
             if [ $? -ne 0 ]; then
-              echo "❌ Failed on $CURRENT_DATE"
+              echo "❌ Failed on chunk $CHUNK_COUNT"
               exit 1
             fi
 
-            # Move to next day
-            CURRENT_TS=$((CURRENT_TS + 86400))
+            # Move to next chunk
+            CURRENT_TS=$CHUNK_END_TS
 
-            # Rate limiting - sleep 2 seconds between days
+            # Rate limiting - sleep 1 second between chunks
             if [ $CURRENT_TS -le $END_TS ]; then
-              sleep 2
+              sleep 1
             fi
           done
 
@@ -81,7 +88,7 @@ jobs:
           echo "=========================================="
           echo "✅ Backfill Complete"
           echo "=========================================="
-          echo "Days processed: $DAY_COUNT"
+          echo "Chunks processed: $CHUNK_COUNT"
           echo "Date range: ${{ inputs.start_date }} to ${{ inputs.end_date }}"
 
       - name: Final status
