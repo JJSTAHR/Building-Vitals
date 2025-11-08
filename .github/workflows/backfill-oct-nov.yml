@@ -1,0 +1,94 @@
+name: Backfill Oct 15 - Nov 7
+
+on:
+  workflow_dispatch:
+    inputs:
+      start_date:
+        description: 'Start date (YYYY-MM-DD)'
+        required: true
+        default: '2025-10-15'
+      end_date:
+        description: 'End date (YYYY-MM-DD)'
+        required: true
+        default: '2025-11-07'
+
+jobs:
+  backfill:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Backfill data by day
+        env:
+          FLIGHTDECK_TOKEN: ${{ secrets.FLIGHTDECK_TOKEN }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          SITE_ID: ses_falls_city
+        run: |
+          echo "🚀 Starting backfill from ${{ inputs.start_date }} to ${{ inputs.end_date }}"
+
+          # Convert dates to Unix timestamps
+          START_TS=$(date -d "${{ inputs.start_date }}" +%s)
+          END_TS=$(date -d "${{ inputs.end_date }}" +%s)
+
+          # Loop through each day
+          CURRENT_TS=$START_TS
+          DAY_COUNT=0
+
+          while [ $CURRENT_TS -le $END_TS ]; do
+            DAY_COUNT=$((DAY_COUNT + 1))
+            CURRENT_DATE=$(date -u -d "@$CURRENT_TS" +%Y-%m-%d)
+
+            # Full day range (00:00:00 to 23:59:59)
+            DAY_START="${CURRENT_DATE}T00:00:00Z"
+            DAY_END="${CURRENT_DATE}T23:59:59Z"
+
+            echo ""
+            echo "=========================================="
+            echo "Day $DAY_COUNT: $CURRENT_DATE"
+            echo "=========================================="
+
+            # Run sync for this day
+            node scripts/sync-to-supabase.js "$DAY_START" "$DAY_END"
+
+            if [ $? -ne 0 ]; then
+              echo "❌ Failed on $CURRENT_DATE"
+              exit 1
+            fi
+
+            # Move to next day
+            CURRENT_TS=$((CURRENT_TS + 86400))
+
+            # Rate limiting - sleep 2 seconds between days
+            if [ $CURRENT_TS -le $END_TS ]; then
+              sleep 2
+            fi
+          done
+
+          echo ""
+          echo "=========================================="
+          echo "✅ Backfill Complete"
+          echo "=========================================="
+          echo "Days processed: $DAY_COUNT"
+          echo "Date range: ${{ inputs.start_date }} to ${{ inputs.end_date }}"
+
+      - name: Final status
+        if: always()
+        run: |
+          if [ ${{ job.status }} == 'success' ]; then
+            echo "✅ Backfill completed successfully"
+          else
+            echo "❌ Backfill failed"
+          fi
