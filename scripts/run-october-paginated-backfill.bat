@@ -37,10 +37,10 @@ echo.
 python scripts\python\backfill_paginated_raw.py ^
   --site ses_falls_city ^
   --start 2025-10-01T00:00:00Z ^
-  --end 2025-11-01T00:00:00Z ^
+  --end 2025-10-31T00:00:00Z ^
   --chunk-minutes 360 ^
   --page-size 10000 ^
-  --max-chunks 250 ^
+  --max-chunks 200 ^
   2>&1 | C:\Windows\System32\find /V ""
 
 if %ERRORLEVEL% EQU 0 (

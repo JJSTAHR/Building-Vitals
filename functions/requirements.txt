@@ -1,0 +1,19 @@
+# Firebase Cloud Functions (2nd Gen) - Python Runtime
+# Python version: 3.11
+
+# Core Firebase and Google Cloud
+functions-framework==3.*
+google-cloud-secret-manager==2.*
+
+# Supabase client
+supabase==2.*
+
+# HTTP and networking
+requests==2.*
+urllib3==2.*
+
+# Data processing
+python-dateutil==2.*
+
+# Flask (required by functions-framework)
+Flask==3.*

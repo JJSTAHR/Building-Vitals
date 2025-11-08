@@ -1,0 +1,55 @@
+name: Hourly Flightdeck Sync
+
+on:
+  schedule:
+    # Run every hour at :05 past the hour
+    - cron: '5 * * * *'
+
+  # Allow manual trigger
+  workflow_dispatch:
+    inputs:
+      site_id:
+        description: 'Site ID to sync'
+        required: false
+        default: 'ses_falls_city'
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run sync
+        env:
+          FLIGHTDECK_TOKEN: ${{ secrets.FLIGHTDECK_TOKEN }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          SITE_ID: ${{ github.event.inputs.site_id || 'ses_falls_city' }}
+        run: |
+          # Sync last hour of data
+          START_TIME=$(date -u -d '1 hour ago' +%Y-%m-%dT%H:%M:%SZ)
+          END_TIME=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+
+          echo "Syncing data from $START_TIME to $END_TIME"
+          node scripts/sync-to-supabase.js "$START_TIME" "$END_TIME"
+
+      - name: Report status
+        if: always()
+        run: |
+          if [ ${{ job.status }} == 'success' ]; then
+            echo "✅ Sync completed successfully"
+          else
+            echo "❌ Sync failed"
+          fi
