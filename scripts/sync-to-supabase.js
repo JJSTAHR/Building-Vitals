@@ -36,19 +36,6 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_KEY, {
 });
 
 /**
- * Generate consistent integer ID from point name
- */
-function hashPointName(name) {
-  let hash = 0;
-  for (let i = 0; i < name.length; i++) {
-    const char = name.charCodeAt(i);
-    hash = ((hash << 5) - hash) + char;
-    hash = hash & hash; // Convert to 32-bit integer
-  }
-  return Math.abs(hash);
-}
-
-/**
  * Fetch data from Flightdeck API with pagination
  */
 async function fetchFromFlightdeck(siteId, startTime, endTime) {
@@ -87,7 +74,7 @@ async function fetchFromFlightdeck(siteId, startTime, endTime) {
 
 /**
  * Insert data into Supabase timeseries table
- * Uses upsert to handle duplicates
+ * First ensures points exist, then inserts timeseries data
  */
 async function insertToSupabase(records) {
   if (records.length === 0) {
@@ -95,26 +82,71 @@ async function insertToSupabase(records) {
     return { inserted: 0, updated: 0 };
   }
 
-  console.log(`📝 Inserting ${records.length} records to Supabase...`);
+  console.log(`📝 Processing ${records.length} records...`);
 
-  // Transform records to match database schema
+  // Step 1: Ensure all points exist in the points table
   // API returns: {name: string, value: string, time: string}
-  // DB expects: {point_id: integer, ts: timestamptz, value: double precision}
+  // Extract unique point names
+  const uniquePoints = [...new Set(records.map(r => r.name))];
+  console.log(`   Found ${uniquePoints.length} unique points`);
+
+  // Upsert points (creates if doesn't exist, skips if exists)
+  const pointsToUpsert = uniquePoints.map(name => ({
+    site_name: SITE_ID,
+    name: name,
+    unit: null  // Unit not provided by API
+  }));
+
+  console.log(`   Ensuring points exist in database...`);
+  const { error: pointsError } = await supabase
+    .from('points')
+    .upsert(pointsToUpsert, {
+      onConflict: 'site_name,name',
+      ignoreDuplicates: true
+    });
+
+  if (pointsError) {
+    console.error(`❌ Error upserting points:`, pointsError);
+    throw pointsError;
+  }
+
+  // Step 2: Query point IDs for all point names
+  console.log(`   Fetching point IDs...`);
+  const { data: pointsData, error: queryError } = await supabase
+    .from('points')
+    .select('id, name')
+    .eq('site_name', SITE_ID)
+    .in('name', uniquePoints);
+
+  if (queryError) {
+    console.error(`❌ Error querying points:`, queryError);
+    throw queryError;
+  }
+
+  // Create name -> id mapping
+  const nameToId = {};
+  pointsData.forEach(point => {
+    nameToId[point.name] = point.id;
+  });
+
+  console.log(`   Mapped ${Object.keys(nameToId).length} point IDs`);
+
+  // Step 3: Transform records to timeseries format
   const transformedRecords = records.map(record => ({
-    point_id: hashPointName(record.name),
+    point_id: nameToId[record.name],
     ts: record.time,
     value: parseFloat(record.value) || 0
   }));
 
-  // Batch insert with upsert (handles duplicates)
+  // Step 4: Batch insert into timeseries
+  console.log(`   Inserting timeseries data...`);
   const BATCH_SIZE = 500;
   let totalInserted = 0;
-  let totalUpdated = 0;
 
   for (let i = 0; i < transformedRecords.length; i += BATCH_SIZE) {
     const batch = transformedRecords.slice(i, i + BATCH_SIZE);
 
-    const { data, error } = await supabase
+    const { error } = await supabase
       .from('timeseries')
       .upsert(batch, {
         onConflict: 'point_id,ts',
@@ -130,7 +162,7 @@ async function insertToSupabase(records) {
     console.log(`   ✓ Batch ${Math.floor(i / BATCH_SIZE) + 1}: ${batch.length} records`);
   }
 
-  console.log(`✅ Successfully processed ${totalInserted} records`);
+  console.log(`✅ Successfully processed ${totalInserted} timeseries records`);
   return { inserted: totalInserted, updated: 0 };
 }
 
