@@ -36,6 +36,19 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_KEY, {
 });
 
 /**
+ * Generate consistent integer ID from point name
+ */
+function hashPointName(name) {
+  let hash = 0;
+  for (let i = 0; i < name.length; i++) {
+    const char = name.charCodeAt(i);
+    hash = ((hash << 5) - hash) + char;
+    hash = hash & hash; // Convert to 32-bit integer
+  }
+  return Math.abs(hash);
+}
+
+/**
  * Fetch data from Flightdeck API with pagination
  */
 async function fetchFromFlightdeck(siteId, startTime, endTime) {
@@ -64,12 +77,12 @@ async function fetchFromFlightdeck(siteId, startTime, endTime) {
 
   const data = await response.json();
 
-  if (!data.data || !Array.isArray(data.data)) {
-    throw new Error('Invalid API response: missing data array');
+  if (!data.point_samples || !Array.isArray(data.point_samples)) {
+    throw new Error('Invalid API response: missing point_samples array');
   }
 
-  console.log(`✅ Fetched ${data.data.length} records from Flightdeck`);
-  return data.data;
+  console.log(`✅ Fetched ${data.point_samples.length} records from Flightdeck`);
+  return data.point_samples;
 }
 
 /**
@@ -85,9 +98,11 @@ async function insertToSupabase(records) {
   console.log(`📝 Inserting ${records.length} records to Supabase...`);
 
   // Transform records to match database schema
+  // API returns: {name: string, value: string, time: string}
+  // DB expects: {point_id: integer, ts: timestamptz, value: double precision}
   const transformedRecords = records.map(record => ({
-    point_id: parseInt(record.point_id),
-    ts: record.ts,
+    point_id: hashPointName(record.name),
+    ts: record.time,
     value: parseFloat(record.value) || 0
   }));
 
