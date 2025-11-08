@@ -96,8 +96,8 @@ async function fetchFromFlightdeck(siteId, startTime, endTime) {
 }
 
 /**
- * Insert data into Supabase timeseries table
- * First ensures points exist, then inserts timeseries data
+ * Insert data into Supabase using fast bulk RPC function
+ * Single database call handles everything in one transaction
  */
 async function insertToSupabase(records) {
   if (records.length === 0) {
@@ -105,95 +105,26 @@ async function insertToSupabase(records) {
     return { inserted: 0, updated: 0 };
   }
 
-  console.log(`📝 Processing ${records.length} records...`);
+  console.log(`📝 Processing ${records.length} records via bulk RPC...`);
 
-  // Step 1: Ensure all points exist in the points table
-  // API returns: {name: string, value: string, time: string}
-  // Extract unique point names
-  const uniquePoints = [...new Set(records.map(r => r.name))];
-  console.log(`   Found ${uniquePoints.length} unique points`);
+  // Call the bulk_upsert_timeseries RPC function
+  // It handles point creation and timeseries insertion in one transaction
+  const { data, error } = await supabase.rpc('bulk_upsert_timeseries', {
+    site_id: SITE_ID,
+    raw_data: records
+  });
 
-  // Upsert points (creates if doesn't exist, skips if exists)
-  const pointsToUpsert = uniquePoints.map(name => ({
-    site_name: SITE_ID,
-    name: name,
-    unit: null  // Unit not provided by API
-  }));
-
-  console.log(`   Ensuring points exist in database...`);
-  const { error: pointsError } = await supabase
-    .from('points')
-    .upsert(pointsToUpsert, {
-      onConflict: 'site_name,name',
-      ignoreDuplicates: true
-    });
-
-  if (pointsError) {
-    console.error(`❌ Error upserting points:`, pointsError);
-    throw pointsError;
+  if (error) {
+    console.error(`❌ Bulk upsert error:`, error);
+    throw error;
   }
 
-  // Step 2: Query point IDs for all point names
-  // Batch queries to avoid URL length limits
-  console.log(`   Fetching point IDs...`);
-  const nameToId = {};
-  const QUERY_BATCH_SIZE = 50;  // Small batches for long point names
+  const result = data[0];
+  console.log(`✅ Complete:`);
+  console.log(`   Points created: ${result.points_created}`);
+  console.log(`   Timeseries inserted: ${result.timeseries_inserted}`);
 
-  for (let i = 0; i < uniquePoints.length; i += QUERY_BATCH_SIZE) {
-    const batch = uniquePoints.slice(i, i + QUERY_BATCH_SIZE);
-
-    const { data: pointsData, error: queryError } = await supabase
-      .from('points')
-      .select('id, name')
-      .eq('site_name', SITE_ID)
-      .in('name', batch);
-
-    if (queryError) {
-      console.error(`❌ Error querying points (batch ${Math.floor(i / QUERY_BATCH_SIZE) + 1}):`, queryError);
-      throw queryError;
-    }
-
-    // Add to mapping
-    pointsData.forEach(point => {
-      nameToId[point.name] = point.id;
-    });
-  }
-
-  console.log(`   Mapped ${Object.keys(nameToId).length} point IDs`);
-
-  // Step 3: Transform records to timeseries format
-  const transformedRecords = records.map(record => ({
-    point_id: nameToId[record.name],
-    ts: record.time,
-    value: parseFloat(record.value) || 0
-  }));
-
-  // Step 4: Batch insert into timeseries
-  console.log(`   Inserting timeseries data...`);
-  const BATCH_SIZE = 1000;  // Increased for large data volumes
-  let totalInserted = 0;
-
-  for (let i = 0; i < transformedRecords.length; i += BATCH_SIZE) {
-    const batch = transformedRecords.slice(i, i + BATCH_SIZE);
-
-    const { error } = await supabase
-      .from('timeseries')
-      .upsert(batch, {
-        onConflict: 'point_id,ts',
-        ignoreDuplicates: false
-      });
-
-    if (error) {
-      console.error(`❌ Batch insert error (batch ${Math.floor(i / BATCH_SIZE) + 1}):`, error);
-      throw error;
-    }
-
-    totalInserted += batch.length;
-    console.log(`   ✓ Batch ${Math.floor(i / BATCH_SIZE) + 1}: ${batch.length} records`);
-  }
-
-  console.log(`✅ Successfully processed ${totalInserted} timeseries records`);
-  return { inserted: totalInserted, updated: 0 };
+  return { inserted: result.timeseries_inserted, updated: 0 };
 }
 
 /**
