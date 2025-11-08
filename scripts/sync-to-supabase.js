@@ -4,7 +4,7 @@
  * Used by GitHub Actions for hourly sync and backfill
  */
 
-const { createClient } = require('@supabase/supabase-js');
+import { createClient } from '@supabase/supabase-js';
 
 // Configuration
 const SITE_ID = process.env.SITE_ID || 'ses_falls_city';
