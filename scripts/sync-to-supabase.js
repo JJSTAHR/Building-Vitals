@@ -111,23 +111,30 @@ async function insertToSupabase(records) {
   }
 
   // Step 2: Query point IDs for all point names
+  // Batch queries to avoid URL length limits (max 100 names per query)
   console.log(`   Fetching point IDs...`);
-  const { data: pointsData, error: queryError } = await supabase
-    .from('points')
-    .select('id, name')
-    .eq('site_name', SITE_ID)
-    .in('name', uniquePoints);
-
-  if (queryError) {
-    console.error(`❌ Error querying points:`, queryError);
-    throw queryError;
-  }
-
-  // Create name -> id mapping
   const nameToId = {};
-  pointsData.forEach(point => {
-    nameToId[point.name] = point.id;
-  });
+  const QUERY_BATCH_SIZE = 100;
+
+  for (let i = 0; i < uniquePoints.length; i += QUERY_BATCH_SIZE) {
+    const batch = uniquePoints.slice(i, i + QUERY_BATCH_SIZE);
+
+    const { data: pointsData, error: queryError } = await supabase
+      .from('points')
+      .select('id, name')
+      .eq('site_name', SITE_ID)
+      .in('name', batch);
+
+    if (queryError) {
+      console.error(`❌ Error querying points (batch ${Math.floor(i / QUERY_BATCH_SIZE) + 1}):`, queryError);
+      throw queryError;
+    }
+
+    // Add to mapping
+    pointsData.forEach(point => {
+      nameToId[point.name] = point.id;
+    });
+  }
 
   console.log(`   Mapped ${Object.keys(nameToId).length} point IDs`);
 
