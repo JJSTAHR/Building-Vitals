@@ -137,7 +137,7 @@ async function insertToSupabase(records) {
   // Batch queries to avoid URL length limits
   console.log(`   Fetching point IDs...`);
   const nameToId = {};
-  const QUERY_BATCH_SIZE = 500;  // Increased for ~7000 points
+  const QUERY_BATCH_SIZE = 50;  // Small batches for long point names
 
   for (let i = 0; i < uniquePoints.length; i += QUERY_BATCH_SIZE) {
     const batch = uniquePoints.slice(i, i + QUERY_BATCH_SIZE);
