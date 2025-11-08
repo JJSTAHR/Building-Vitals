@@ -37,39 +37,62 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_KEY, {
 
 /**
  * Fetch data from Flightdeck API with pagination
+ * Handles multiple pages to get ALL records in the time range
  */
 async function fetchFromFlightdeck(siteId, startTime, endTime) {
-  const url = new URL(`https://flightdeck.aceiot.cloud/api/sites/${siteId}/timeseries/paginated`);
-  url.searchParams.set('start_time', startTime);
-  url.searchParams.set('end_time', endTime);
-  url.searchParams.set('page_size', '1000');
-  url.searchParams.set('raw_data', 'true');
-
   console.log(`🔍 Fetching data from Flightdeck...`);
   console.log(`   Site: ${siteId}`);
   console.log(`   Start: ${startTime}`);
   console.log(`   End: ${endTime}`);
 
-  const response = await fetch(url.toString(), {
-    headers: {
-      'Authorization': `Bearer ${FLIGHTDECK_TOKEN}`,
-      'Accept': 'application/json'
+  let allRecords = [];
+  let cursor = null;
+  let pageCount = 0;
+
+  do {
+    pageCount++;
+    const url = new URL(`https://flightdeck.aceiot.cloud/api/sites/${siteId}/timeseries/paginated`);
+    url.searchParams.set('start_time', startTime);
+    url.searchParams.set('end_time', endTime);
+    url.searchParams.set('page_size', '10000');  // Increased to 10k per page
+    url.searchParams.set('raw_data', 'true');
+
+    if (cursor) {
+      url.searchParams.set('cursor', cursor);
     }
-  });
 
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(`Flightdeck API error (${response.status}): ${errorText}`);
-  }
+    const response = await fetch(url.toString(), {
+      headers: {
+        'Authorization': `Bearer ${FLIGHTDECK_TOKEN}`,
+        'Accept': 'application/json'
+      }
+    });
 
-  const data = await response.json();
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Flightdeck API error (${response.status}): ${errorText}`);
+    }
 
-  if (!data.point_samples || !Array.isArray(data.point_samples)) {
-    throw new Error('Invalid API response: missing point_samples array');
-  }
+    const data = await response.json();
 
-  console.log(`✅ Fetched ${data.point_samples.length} records from Flightdeck`);
-  return data.point_samples;
+    if (!data.point_samples || !Array.isArray(data.point_samples)) {
+      throw new Error('Invalid API response: missing point_samples array');
+    }
+
+    allRecords = allRecords.concat(data.point_samples);
+    console.log(`   Page ${pageCount}: ${data.point_samples.length} records (total: ${allRecords.length})`);
+
+    cursor = data.next_cursor;
+
+    // Check if there are more pages
+    if (!data.has_more) {
+      break;
+    }
+
+  } while (cursor);
+
+  console.log(`✅ Fetched ${allRecords.length} total records across ${pageCount} pages`);
+  return allRecords;
 }
 
 /**
@@ -111,10 +134,10 @@ async function insertToSupabase(records) {
   }
 
   // Step 2: Query point IDs for all point names
-  // Batch queries to avoid URL length limits (max 100 names per query)
+  // Batch queries to avoid URL length limits
   console.log(`   Fetching point IDs...`);
   const nameToId = {};
-  const QUERY_BATCH_SIZE = 100;
+  const QUERY_BATCH_SIZE = 500;  // Increased for ~7000 points
 
   for (let i = 0; i < uniquePoints.length; i += QUERY_BATCH_SIZE) {
     const batch = uniquePoints.slice(i, i + QUERY_BATCH_SIZE);
@@ -147,7 +170,7 @@ async function insertToSupabase(records) {
 
   // Step 4: Batch insert into timeseries
   console.log(`   Inserting timeseries data...`);
-  const BATCH_SIZE = 500;
+  const BATCH_SIZE = 1000;  // Increased for large data volumes
   let totalInserted = 0;
 
   for (let i = 0; i < transformedRecords.length; i += BATCH_SIZE) {
